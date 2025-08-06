@@ -1,15 +1,27 @@
-const fs = require('fs');
-const { initializeDatabase, get_config_path } = require('../store');
-const arrow = require('apache-arrow');
+import { jest } from '@jest/globals';
 
-// Mocking dependencies
-jest.mock('fs');
-jest.mock('@xenova/transformers', () => ({}));
-jest.mock('@lancedb/lancedb', () => ({
-  connect: jest.fn().mockResolvedValue({
-    tableNames: jest.fn().mockResolvedValue([]),
-    createEmptyTable: jest.fn().mockResolvedValue(),
-  }),
+// Mock modules globally
+const mockReadFileSync = jest.fn();
+const mockExistsSync = jest.fn();
+const mockWriteFileSync = jest.fn();
+const mockMkdirSync = jest.fn();
+
+jest.unstable_mockModule('fs', () => ({
+  readFileSync: mockReadFileSync,
+  existsSync: mockExistsSync,
+  writeFileSync: mockWriteFileSync,
+  mkdirSync: mockMkdirSync,
+}));
+
+const mockConnect = jest.fn();
+jest.unstable_mockModule('@lancedb/lancedb', () => ({
+  default: {
+    connect: mockConnect,
+  }
+}));
+
+jest.unstable_mockModule('apache-arrow', () => ({
+  default: {},
 }));
 
 const mockDialog = {
@@ -20,51 +32,66 @@ const mockDialog = {
 
 const mockApp = {
   quit: jest.fn(),
-  getPath: jest.fn().mockReturnValue('/tmp'),
+  getPath: jest.fn().mockReturnValue('/tmp/userData'),
 };
 
 describe('store', () => {
   beforeEach(() => {
-    // Clear all instances and calls to constructor and all methods:
-    fs.existsSync.mockClear();
-    fs.readFileSync.mockClear();
-    fs.writeFileSync.mockClear();
-    mockDialog.showOpenDialog.mockClear();
-    mockDialog.showMessageBox.mockClear();
-    mockDialog.showErrorBox.mockClear();
-    mockApp.quit.mockClear();
+    jest.clearAllMocks();
   });
 
   it('should create a new config file if one does not exist', async () => {
-    fs.existsSync.mockReturnValue(false);
-    mockDialog.showOpenDialog.mockResolvedValue({ filePaths: ['/test/path'] });
+    mockExistsSync.mockReturnValue(false);
+    mockConnect.mockResolvedValue({
+      tableNames: jest.fn().mockResolvedValue([]),
+      createTable: jest.fn().mockResolvedValue({
+        delete: jest.fn()
+      }),
+    });
 
+    const { initializeDatabase, get_config_path } = await import('../store.js');
+    
     const configPath = get_config_path(mockApp.getPath('userData'));
     await initializeDatabase(configPath, mockDialog, mockApp);
 
-    expect(fs.writeFileSync).toHaveBeenCalledWith(
+    expect(mockWriteFileSync).toHaveBeenCalledWith(
       configPath,
-      JSON.stringify({ storage_path: '/test/path' }, null, 2)
+      JSON.stringify({ storage_path: '/tmp/userData/database' }, null, 2)
     );
   });
 
   it('should use an existing config file if one is present', async () => {
-    fs.existsSync.mockReturnValue(true);
-    fs.readFileSync.mockReturnValue(JSON.stringify({ storage_path: '/existing/path' }));
+    mockExistsSync.mockReturnValue(true);
+    mockReadFileSync.mockReturnValue(JSON.stringify({ storage_path: '/existing/path' }));
+    mockConnect.mockResolvedValue({
+      tableNames: jest.fn().mockResolvedValue([]),
+      createTable: jest.fn().mockResolvedValue({
+        delete: jest.fn()
+      }),
+    });
+
+    const { initializeDatabase, get_config_path } = await import('../store.js');
 
     const configPath = get_config_path(mockApp.getPath('userData'));
     await initializeDatabase(configPath, mockDialog, mockApp);
 
-    expect(fs.writeFileSync).not.toHaveBeenCalled();
+    expect(mockWriteFileSync).not.toHaveBeenCalled();
   });
 
-  it('should quit the app if the user cancels the dialog', async () => {
-    fs.existsSync.mockReturnValue(false);
-    mockDialog.showOpenDialog.mockResolvedValue({ filePaths: [] });
+  it('should create default storage path when none exists', async () => {
+    mockExistsSync.mockReturnValue(false);
+    mockConnect.mockResolvedValue({
+      tableNames: jest.fn().mockResolvedValue([]),
+      createTable: jest.fn().mockResolvedValue({
+        delete: jest.fn()
+      }),
+    });
 
+    const { initializeDatabase, get_config_path } = await import('../store.js');
+    
     const configPath = get_config_path(mockApp.getPath('userData'));
     await initializeDatabase(configPath, mockDialog, mockApp);
 
-    expect(mockApp.quit).toHaveBeenCalled();
+    expect(mockMkdirSync).toHaveBeenCalledWith('/tmp/userData/database', { recursive: true });
   });
 });
