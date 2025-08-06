@@ -696,19 +696,85 @@ body {
   cursor: not-allowed;
 }
 
+/* Import styles */
+.import-buttons {
+  display: flex;
+  gap: 12px;
+}
+
+.import-button {
+  padding: 10px 20px;
+  background: #007bff;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.import-button:hover:not(:disabled) {
+  background: #0056b3;
+}
+
+.import-button:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+}
+
+/* Danger zone styles */
+.danger-section {
+  border: 2px solid #ff4757;
+  border-radius: 8px;
+  padding: 16px;
+  background: #fff5f5;
+}
+
+.danger-section h3 {
+  color: #ff4757;
+  margin-bottom: 8px;
+}
+
+.danger-buttons {
+  display: flex;
+  gap: 12px;
+}
+
+.delete-all-button {
+  padding: 10px 20px;
+  background: #ff4757;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.delete-all-button:hover:not(:disabled) {
+  background: #ff3838;
+}
+
+.delete-all-button:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+}
+
 /* Delete button in item row */
 .item-delete-btn {
   background: none;
   border: none;
   color: #ccc;
   cursor: pointer;
-  font-size: 16px;
-  padding: 2px 6px;
-  border-radius: 3px;
+  font-size: 14px;
+  padding: 4px 6px;
+  border-radius: 4px;
   opacity: 0;
   transition: all 0.2s ease;
   margin-left: auto;
   margin-right: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .item-row:hover .item-delete-btn {
@@ -717,7 +783,17 @@ body {
 
 .item-delete-btn:hover {
   background: #ff4757;
-  color: white;
+  transform: scale(1.1);
+  opacity: 1;
+}
+
+/* Search highlighting */
+.search-highlight {
+  background-color: #ffeb3b;
+  color: #333;
+  padding: 1px 2px;
+  border-radius: 2px;
+  font-weight: bold;
 }
 
 /* Updated form actions for delete button */

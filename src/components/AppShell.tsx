@@ -258,6 +258,7 @@ const AppShell: React.FC = () => {
               item={selectedItem}
               onEdit={handleEditItem}
               onCopy={handleCopyItem}
+              searchQuery={searchQuery}
             />
           </div>
         )}

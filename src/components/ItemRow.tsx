@@ -33,6 +33,22 @@ const ItemRow: React.FC<ItemRowProps> = ({
     return payload.substring(0, maxLength) + '…';
   };
 
+  const highlightText = (text: string, query: string): React.ReactNode => {
+    if (!query || !text) return text;
+    
+    // Escape special regex characters
+    const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(`(${escapedQuery})`, 'gi');
+    const parts = text.split(regex);
+    
+    return parts.map((part, index) => {
+      if (regex.test(part)) {
+        return <mark key={index} className="search-highlight">{part}</mark>;
+      }
+      return part;
+    });
+  };
+
   const handleDelete = (e: React.MouseEvent) => {
     e.stopPropagation(); // Prevent row selection
     if (onDelete) {
@@ -54,7 +70,9 @@ const ItemRow: React.FC<ItemRowProps> = ({
       <div className="item-content">
         <div className="item-header">
           <span className="item-type">[{getTypeLabel(item.type)}]</span>
-          <span className="item-description">{item.description}</span>
+          <span className="item-description">
+            {searchQuery ? highlightText(item.description, searchQuery) : item.description}
+          </span>
           <span className="item-time">{timeAgo}</span>
           {onDelete && (
             <button 
@@ -62,13 +80,13 @@ const ItemRow: React.FC<ItemRowProps> = ({
               onClick={handleDelete}
               title="Delete item"
             >
-              ×
+              🗑️
             </button>
           )}
           <span className="item-arrow">▸</span>
         </div>
         <div className="item-payload">
-          {truncatePayload(item.payload)}
+          {searchQuery ? highlightText(truncatePayload(item.payload), searchQuery) : truncatePayload(item.payload)}
         </div>
         {searchQuery && (
           <div className="item-score">

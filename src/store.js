@@ -289,3 +289,139 @@ export function getDataPath(configPath) {
     return null;
   }
 }
+
+export async function importData(configPath, importData, format = 'json') {
+  try {
+    let items = [];
+    
+    if (format === 'csv') {
+      // Parse CSV data
+      const lines = importData.trim().split('\n');
+      if (lines.length < 2) {
+        throw new Error('CSV file must contain at least a header row and one data row');
+      }
+      
+      const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+      const requiredFields = ['type', 'description', 'payload'];
+      
+      for (const field of requiredFields) {
+        if (!headers.includes(field)) {
+          throw new Error(`CSV file must contain required field: ${field}`);
+        }
+      }
+      
+      for (let i = 1; i < lines.length; i++) {
+        const values = lines[i].split(',').map(v => v.trim().replace(/^"|"$/g, ''));
+        const item = {};
+        
+        headers.forEach((header, index) => {
+          if (values[index] !== undefined) {
+            item[header] = values[index];
+          }
+        });
+        
+        // Validate required fields
+        for (const field of requiredFields) {
+          if (!item[field] || item[field].trim() === '') {
+            throw new Error(`Row ${i + 1}: Missing required field '${field}'`);
+          }
+        }
+        
+        items.push(item);
+      }
+    } else {
+      // Parse JSON data
+      const parsedData = JSON.parse(importData);
+      items = Array.isArray(parsedData) ? parsedData : [parsedData];
+      
+      // Validate each item has required fields
+      const requiredFields = ['type', 'description', 'payload'];
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        for (const field of requiredFields) {
+          if (!item[field] || (typeof item[field] === 'string' && item[field].trim() === '')) {
+            throw new Error(`Item ${i + 1}: Missing required field '${field}'`);
+          }
+        }
+      }
+    }
+    
+    // Import each item (this will generate embeddings and append to existing data)
+    const config = JSON.parse(fs.readFileSync(configPath));
+    const db = await lancedb.connect(config.storage_path);
+    const table = await db.openTable('items');
+    
+    let successCount = 0;
+    let errorCount = 0;
+    const errors = [];
+    
+    for (let i = 0; i < items.length; i++) {
+      try {
+        const item = items[i];
+        const embedding = await generateEmbedding(item.payload + ' ' + item.description);
+        
+        await table.add([{
+          id: uuidv4(),
+          type: item.type,
+          payload: item.payload,
+          description: item.description,
+          created_at: item.created_at || new Date().toISOString(),
+          last_accessed_at: item.last_accessed_at || new Date().toISOString(),
+          embedding_model: 'tensorflow/universal-sentence-encoder',
+          vector: embedding,
+        }]);
+        
+        successCount++;
+      } catch (error) {
+        errorCount++;
+        errors.push(`Item ${i + 1}: ${error.message}`);
+        console.error(`Error importing item ${i + 1}:`, error);
+      }
+    }
+    
+    return {
+      success: true,
+      message: `Import completed: ${successCount} items imported successfully${errorCount > 0 ? `, ${errorCount} failed` : ''}`,
+      successCount,
+      errorCount,
+      errors: errorCount > 0 ? errors : undefined
+    };
+    
+  } catch (error) {
+    console.error('Detailed error in importData:', error);
+    console.error('Error stack:', error.stack);
+    throw new Error(`Failed to import data: ${error.message}`);
+  }
+}
+
+export async function deleteAllData(configPath) {
+  try {
+    const config = JSON.parse(fs.readFileSync(configPath));
+    const db = await lancedb.connect(config.storage_path);
+    
+    // Drop the table and recreate it
+    await db.dropTable('items');
+    
+    // Recreate the table with sample data for schema inference
+    const sampleData = [{
+      id: 'sample',
+      type: 'text',
+      payload: 'sample payload',
+      description: 'sample description',
+      created_at: new Date().toISOString(),
+      last_accessed_at: new Date().toISOString(),
+      embedding_model: 'tensorflow/universal-sentence-encoder',
+      vector: new Array(512).fill(0.0),
+    }];
+    
+    const table = await db.createTable('items', sampleData);
+    // Remove the sample data
+    await table.delete('id = "sample"');
+    
+    return { success: true, message: 'All data deleted successfully' };
+  } catch (error) {
+    console.error('Detailed error in deleteAllData:', error);
+    console.error('Error stack:', error.stack);
+    throw new Error(`Failed to delete all data: ${error.message}`);
+  }
+}

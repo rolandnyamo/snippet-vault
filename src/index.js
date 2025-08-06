@@ -8,7 +8,7 @@ import { app, BrowserWindow, dialog, ipcMain } from 'electron';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-import { initializeDatabase, get_config_path, addItem, searchItems, getRecentItems, deleteItem, getAllItems, exportData, getDataPath } from './store.js';
+import { initializeDatabase, get_config_path, addItem, searchItems, getRecentItems, deleteItem, getAllItems, exportData, getDataPath, importData, deleteAllData } from './store.js';
 
 // Get the current directory for ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -113,6 +113,28 @@ app.whenReady().then(async () => {
   ipcMain.on('show-item-in-folder', async (event, path) => {
     const { shell } = require('electron');
     shell.showItemInFolder(path);
+  });
+
+  ipcMain.on('import-data', async (event, { data, format }) => {
+    try {
+      const configPath = get_config_path(app.getPath('userData'));
+      const result = await importData(configPath, data, format);
+      event.sender.send('import-data-result', result);
+    } catch (error) {
+      console.error('Error importing data:', error);
+      event.sender.send('import-data-error', error.message);
+    }
+  });
+
+  ipcMain.on('delete-all-data', async (event) => {
+    try {
+      const configPath = get_config_path(app.getPath('userData'));
+      const result = await deleteAllData(configPath);
+      event.sender.send('delete-all-data-result', result);
+    } catch (error) {
+      console.error('Error deleting all data:', error);
+      event.sender.send('delete-all-data-error', error.message);
+    }
   });
 
   // On OS X it's common to re-create a window in the app when the
