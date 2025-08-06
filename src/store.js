@@ -113,7 +113,7 @@ async function searchItems(query, configPath) {
     .limit(10)
     .execute();
 
-  return results.map(r => r.toJSON());
+  return results;
 }
 
 async function getRecentItems(configPath) {
@@ -126,7 +126,7 @@ async function getRecentItems(configPath) {
     orderBy: 'last_accessed_at DESC',
   }).execute();
 
-  return [...results].map(r => r.toJSON());
+  return results;
 }
 
 module.exports = { initializeDatabase, get_config_path, addItem, searchItems, getRecentItems };
