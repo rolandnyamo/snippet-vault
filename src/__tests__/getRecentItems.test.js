@@ -19,7 +19,9 @@ describe('getRecentItems', () => {
       ]),
     };
     const mockTable = {
-      query: jest.fn().mockReturnValue({ execute: jest.fn().mockResolvedValue(mockQueryResult) }),
+      query: jest.fn().mockReturnValue({
+        select: jest.fn().mockReturnValue(mockQueryResult),
+      }),
     };
     const mockDb = { openTable: jest.fn().mockResolvedValue(mockTable) };
     jest.doMock('@lancedb/lancedb', () => ({

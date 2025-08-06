@@ -123,8 +123,18 @@ async function getRecentItems(configPath) {
   const db = await lancedb.connect(config.storage_path);
   const table = await db.openTable('items');
 
-  const queryResult = await table.query().execute();
-  const items = await queryResult.toArray();
+  const items = await table
+    .query()
+    .select([
+      'id',
+      'type',
+      'payload',
+      'description',
+      'created_at',
+      'last_accessed_at',
+      'embedding_model',
+    ])
+    .toArray();
 
   return items
     .sort((a, b) => new Date(b.last_accessed_at) - new Date(a.last_accessed_at))
