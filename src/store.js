@@ -6,39 +6,64 @@ function get_config_path(userDataPath) {
     return path.join(userDataPath, 'config.json');
 }
 
+const arrow = require('apache-arrow');
+
 async function initializeDatabase(configPath, dialog, app) {
   let config = {};
   if (fs.existsSync(configPath)) {
     config = JSON.parse(fs.readFileSync(configPath));
   }
 
-  if (!config.storage_path) {
-    const userDataPath = app.getPath('userData');
-    const dbPath = path.join(userDataPath, 'lancedb');
-    if (!fs.existsSync(dbPath)) {
-      fs.mkdirSync(dbPath, { recursive: true });
-    }
-    config.storage_path = dbPath;
-    fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
-  }
+  let db;
+  while (true) {
+    if (!config.storage_path) {
+      const { filePaths } = await dialog.showOpenDialog({
+        properties: ['openDirectory'],
+        title: 'Select a folder to store your data',
+      });
 
-  try {
-    const db = await lancedb.connect(config.storage_path);
-    const tables = await db.tableNames();
-    if (!tables.includes('items')) {
-      await db.createTable('items', [
-        { vector: [], text: 'sample', id: '1' },
-      ]);
+      if (filePaths && filePaths.length > 0) {
+        config.storage_path = filePaths[0];
+        fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+      } else {
+        app.quit();
+        return;
+      }
     }
-  } catch (err) {
-    console.error('Error initializing database:', err);
-    await dialog.showMessageBox({
-      type: 'error',
-      title: 'Database Error',
-      message: 'Could not initialize the database. Please check the path and permissions.',
-      buttons: ['Quit'],
-    });
-    app.quit();
+
+    try {
+      db = await lancedb.connect(config.storage_path);
+      const tables = await db.tableNames();
+      if (!tables.includes('items')) {
+        const schema = new arrow.Schema([
+          new arrow.Field('id', new arrow.Utf8(), false),
+          new arrow.Field('type', new arrow.Utf8(), false),
+          new arrow.Field('payload', new arrow.Utf8(), false),
+          new arrow.Field('description', new arrow.Utf8(), false),
+          new arrow.Field('created_at', new arrow.Utf8(), false),
+          new arrow.Field('last_accessed_at', new arrow.Utf8(), false),
+          new arrow.Field('embedding_model', new arrow.Utf8(), false),
+          new arrow.Field('vector', new arrow.FixedSizeList(384, new arrow.Field('item', new arrow.Float32()))),
+        ]);
+        await db.createEmptyTable('items', schema);
+      }
+      break; // Success, exit loop
+    } catch (err) {
+      console.error('Error initializing database:', err);
+      const { response } = await dialog.showMessageBox({
+        type: 'error',
+        title: 'Database Error',
+        message: 'Could not initialize the database. Please check the path and permissions.',
+        buttons: ['Quit', 'Choose New Folder'],
+      });
+
+      if (response === 1) { // Choose New Folder
+        config.storage_path = null; // Clear the path to re-trigger the selection dialog
+      } else {
+        app.quit();
+        return;
+      }
+    }
   }
 }
 

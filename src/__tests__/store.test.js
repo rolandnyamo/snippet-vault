@@ -1,24 +1,20 @@
 const fs = require('fs');
-const path = require('node:path');
 const { initializeDatabase, get_config_path } = require('../store');
+const arrow = require('apache-arrow');
 
 // Mocking dependencies
-jest.mock('fs', () => ({
-    ...jest.requireActual('fs'),
-    existsSync: jest.fn(),
-    readFileSync: jest.fn(),
-    writeFileSync: jest.fn(),
-    mkdirSync: jest.fn(),
-}));
+jest.mock('fs');
 jest.mock('@xenova/transformers', () => ({}));
 jest.mock('@lancedb/lancedb', () => ({
   connect: jest.fn().mockResolvedValue({
     tableNames: jest.fn().mockResolvedValue([]),
-    createTable: jest.fn().mockResolvedValue(),
+    createEmptyTable: jest.fn().mockResolvedValue(),
   }),
 }));
 
 const mockDialog = {
+  showOpenDialog: jest.fn(),
+  showMessageBox: jest.fn(),
   showErrorBox: jest.fn(),
 };
 
@@ -33,44 +29,42 @@ describe('store', () => {
     fs.existsSync.mockClear();
     fs.readFileSync.mockClear();
     fs.writeFileSync.mockClear();
-    fs.mkdirSync.mockClear();
+    mockDialog.showOpenDialog.mockClear();
+    mockDialog.showMessageBox.mockClear();
     mockDialog.showErrorBox.mockClear();
     mockApp.quit.mockClear();
   });
 
-  it('should create a new config file and directory if one does not exist', async () => {
-    // Mock that config and db directory don't exist
+  it('should create a new config file if one does not exist', async () => {
     fs.existsSync.mockReturnValue(false);
+    mockDialog.showOpenDialog.mockResolvedValue({ filePaths: ['/test/path'] });
 
-    const userDataPath = mockApp.getPath('userData');
-    const configPath = get_config_path(userDataPath);
-    const dbPath = path.join(userDataPath, 'lancedb');
-
+    const configPath = get_config_path(mockApp.getPath('userData'));
     await initializeDatabase(configPath, mockDialog, mockApp);
 
-    // Expect that the directory was created
-    expect(fs.mkdirSync).toHaveBeenCalledWith(dbPath, { recursive: true });
-
-    // Expect that the config file was written with the correct path
     expect(fs.writeFileSync).toHaveBeenCalledWith(
       configPath,
-      JSON.stringify({ storage_path: dbPath }, null, 2)
+      JSON.stringify({ storage_path: '/test/path' }, null, 2)
     );
   });
 
   it('should use an existing config file if one is present', async () => {
-    const userDataPath = mockApp.getPath('userData');
-    const configPath = get_config_path(userDataPath);
-    const dbPath = path.join(userDataPath, 'lancedb');
+    fs.existsSync.mockReturnValue(true);
+    fs.readFileSync.mockReturnValue(JSON.stringify({ storage_path: '/existing/path' }));
 
-    // Mock that config exists, but db path might not
-    fs.existsSync.mockImplementation(p => p === configPath);
-    fs.readFileSync.mockReturnValue(JSON.stringify({ storage_path: dbPath }));
-
+    const configPath = get_config_path(mockApp.getPath('userData'));
     await initializeDatabase(configPath, mockDialog, mockApp);
 
-    // Expect that nothing new was written or created
     expect(fs.writeFileSync).not.toHaveBeenCalled();
-    expect(fs.mkdirSync).not.toHaveBeenCalled();
+  });
+
+  it('should quit the app if the user cancels the dialog', async () => {
+    fs.existsSync.mockReturnValue(false);
+    mockDialog.showOpenDialog.mockResolvedValue({ filePaths: [] });
+
+    const configPath = get_config_path(mockApp.getPath('userData'));
+    await initializeDatabase(configPath, mockDialog, mockApp);
+
+    expect(mockApp.quit).toHaveBeenCalled();
   });
 });
