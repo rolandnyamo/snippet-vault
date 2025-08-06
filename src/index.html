@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Snippet Vault</title>
+    <link rel="stylesheet" href="index.css" />
+  </head>
+  <body>
+    <h1>Add New Item</h1>
+    <form id="add-item-form">
+      <label for="item-type">Type:</label>
+      <select id="item-type" name="type">
+        <option value="link">Link</option>
+        <option value="kusto_query">Kusto Query</option>
+      </select>
+      <br />
+      <label for="item-payload">Payload:</label>
+      <textarea id="item-payload" name="payload" rows="4" cols="50" required></textarea>
+      <br />
+      <label for="item-description">Description:</label>
+      <input type="text" id="item-description" name="description" size="50" required />
+      <br />
+      <button type="submit">Save</button>
+    </form>
+    <hr>
+    <h2>Search</h2>
+    <input type="text" id="search-box" placeholder="Search or add..." size="50" />
+    <div id="search-results"></div>
+
+    <h2>Recent Items</h2>
+    <div id="recent-items"></div>
+
+    <script src="./renderer.js"></script>
+  </body>
+</html>
