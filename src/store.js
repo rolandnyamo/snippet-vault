@@ -107,13 +107,11 @@ async function searchItems(query, configPath) {
   const embedder = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
   const queryEmbedding = await embedder(query, { pooling: 'mean', normalize: true });
 
-  const resultTable = await table
+  const rawResults = await table
     .search(Array.from(queryEmbedding.data))
     .where(`description LIKE '%${query}%'`)
     .limit(10)
-    .execute();
-
-  const rawResults = await resultTable.toArray();
+    .toArray();
 
   return rawResults.map(({ vector, ...rest }) => rest);
 }

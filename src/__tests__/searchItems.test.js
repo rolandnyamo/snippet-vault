@@ -4,17 +4,13 @@ jest.mock('fs');
 
 describe('searchItems', () => {
   it('returns plain results without vectors', async () => {
-    const mockResult = {
-      toArray: jest.fn().mockResolvedValue([
-        { description: 'found', vector: [1, 2, 3] },
-      ]),
-    };
-
     const mockTable = {
       search: jest.fn().mockReturnValue({
         where: jest.fn().mockReturnValue({
           limit: jest.fn().mockReturnValue({
-            execute: jest.fn().mockResolvedValue(mockResult),
+            toArray: jest
+              .fn()
+              .mockResolvedValue([{ description: 'found', vector: [1, 2, 3] }]),
           }),
         }),
       }),
