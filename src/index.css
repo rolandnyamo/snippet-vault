@@ -584,6 +584,167 @@ body {
   background: #e0e0e0;
 }
 
+/* Settings Modal */
+.settings-modal {
+  background: white;
+  border-radius: 8px;
+  padding: 0;
+  min-width: 500px;
+  max-width: 600px;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+}
+
+.settings-modal .modal-header {
+  background: #f8f9fa;
+  padding: 16px 20px;
+  border-bottom: 1px solid #e0e0e0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.settings-modal .modal-header h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.settings-modal .modal-content {
+  padding: 20px;
+}
+
+.settings-section {
+  margin-bottom: 30px;
+}
+
+.settings-section:last-child {
+  margin-bottom: 0;
+}
+
+.settings-section h3 {
+  margin: 0 0 8px 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #333;
+}
+
+.settings-description {
+  margin: 0 0 12px 0;
+  color: #666;
+  font-size: 14px;
+}
+
+.data-path-container {
+  display: flex;
+  gap: 8px;
+}
+
+.data-path-input {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background: #f8f9fa;
+  color: #666;
+  font-size: 13px;
+  font-family: 'Monaco', 'Consolas', monospace;
+}
+
+.show-folder-button {
+  padding: 8px 16px;
+  background: #007acc;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.show-folder-button:hover:not(:disabled) {
+  background: #005a9e;
+}
+
+.show-folder-button:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+}
+
+.export-buttons {
+  display: flex;
+  gap: 12px;
+}
+
+.export-button {
+  padding: 10px 20px;
+  background: #28a745;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.export-button:hover:not(:disabled) {
+  background: #218838;
+}
+
+.export-button:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+}
+
+/* Delete button in item row */
+.item-delete-btn {
+  background: none;
+  border: none;
+  color: #ccc;
+  cursor: pointer;
+  font-size: 16px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  opacity: 0;
+  transition: all 0.2s ease;
+  margin-left: auto;
+  margin-right: 8px;
+}
+
+.item-row:hover .item-delete-btn {
+  opacity: 1;
+}
+
+.item-delete-btn:hover {
+  background: #ff4757;
+  color: white;
+}
+
+/* Updated form actions for delete button */
+.form-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 16px;
+  border-top: 1px solid #e0e0e0;
+}
+
+.left-actions, .right-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.action-button.danger {
+  background: #dc3545;
+  color: white;
+  border: 1px solid #dc3545;
+}
+
+.action-button.danger:hover {
+  background: #c82333;
+  border-color: #bd2130;
+}
+
 /* Responsive adjustments */
 @media (max-width: 768px) {
   .app-main {
@@ -599,9 +760,27 @@ body {
     height: 50%;
   }
   
-  .modal-content {
+  .modal-content, .settings-modal {
     min-width: auto;
     margin: 20px;
     max-width: calc(100vw - 40px);
+  }
+  
+  .data-path-container {
+    flex-direction: column;
+  }
+  
+  .export-buttons {
+    flex-direction: column;
+  }
+  
+  .form-actions {
+    flex-direction: column;
+    gap: 12px;
+  }
+  
+  .left-actions, .right-actions {
+    width: 100%;
+    justify-content: center;
   }
 }

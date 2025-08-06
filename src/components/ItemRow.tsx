@@ -7,6 +7,7 @@ interface ItemRowProps {
   timeAgo: string;
   onClick: () => void;
   onKeyDown: (e: React.KeyboardEvent) => void;
+  onDelete?: (itemId: string) => void;
   searchQuery: string;
 }
 
@@ -16,6 +17,7 @@ const ItemRow: React.FC<ItemRowProps> = ({
   timeAgo, 
   onClick, 
   onKeyDown,
+  onDelete,
   searchQuery 
 }) => {
   const getTypeLabel = (type: string): string => {
@@ -31,6 +33,16 @@ const ItemRow: React.FC<ItemRowProps> = ({
     return payload.substring(0, maxLength) + '…';
   };
 
+  const handleDelete = (e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent row selection
+    if (onDelete) {
+      const confirmed = window.confirm('Are you sure you want to delete this item?');
+      if (confirmed) {
+        onDelete(item.id);
+      }
+    }
+  };
+
   return (
     <div 
       className={`item-row ${isSelected ? 'selected' : ''}`}
@@ -44,6 +56,15 @@ const ItemRow: React.FC<ItemRowProps> = ({
           <span className="item-type">[{getTypeLabel(item.type)}]</span>
           <span className="item-description">{item.description}</span>
           <span className="item-time">{timeAgo}</span>
+          {onDelete && (
+            <button 
+              className="item-delete-btn"
+              onClick={handleDelete}
+              title="Delete item"
+            >
+              ×
+            </button>
+          )}
           <span className="item-arrow">▸</span>
         </div>
         <div className="item-payload">

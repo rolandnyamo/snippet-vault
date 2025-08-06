@@ -206,3 +206,86 @@ export async function getRecentItems(configPath) {
     .slice(0, 5)
     .map(({ vector, ...rest }) => rest);
 }
+
+export async function deleteItem(itemId, configPath) {
+  try {
+    const config = JSON.parse(fs.readFileSync(configPath));
+    const db = await lancedb.connect(config.storage_path);
+    const table = await db.openTable('items');
+
+    await table.delete(`id = "${itemId}"`);
+  } catch (error) {
+    console.error('Detailed error in deleteItem:', error);
+    console.error('Error stack:', error.stack);
+    throw new Error(`Failed to delete item: ${error.message}`);
+  }
+}
+
+export async function getAllItems(configPath) {
+  try {
+    const config = JSON.parse(fs.readFileSync(configPath));
+    const db = await lancedb.connect(config.storage_path);
+    const table = await db.openTable('items');
+
+    const items = await table
+      .query()
+      .select([
+        'id',
+        'type',
+        'payload',
+        'description',
+        'created_at',
+        'last_accessed_at',
+        'embedding_model',
+      ])
+      .toArray();
+
+    return items
+      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+      .map(({ vector, ...rest }) => rest);
+  } catch (error) {
+    console.error('Detailed error in getAllItems:', error);
+    console.error('Error stack:', error.stack);
+    throw new Error(`Failed to get all items: ${error.message}`);
+  }
+}
+
+export async function exportData(configPath, format = 'json') {
+  try {
+    const items = await getAllItems(configPath);
+    
+    if (format === 'csv') {
+      // Convert to CSV format
+      const headers = ['id', 'type', 'description', 'payload', 'created_at', 'last_accessed_at', 'embedding_model'];
+      const csvRows = [
+        headers.join(','),
+        ...items.map(item => 
+          headers.map(header => {
+            const value = item[header] || '';
+            // Escape quotes and wrap in quotes if contains comma or quote
+            return typeof value === 'string' && (value.includes(',') || value.includes('"'))
+              ? `"${value.replace(/"/g, '""')}"` 
+              : value;
+          }).join(',')
+        )
+      ];
+      return csvRows.join('\n');
+    } else {
+      // Default to JSON format
+      return JSON.stringify(items, null, 2);
+    }
+  } catch (error) {
+    console.error('Detailed error in exportData:', error);
+    console.error('Error stack:', error.stack);
+    throw new Error(`Failed to export data: ${error.message}`);
+  }
+}
+
+export function getDataPath(configPath) {
+  try {
+    const config = JSON.parse(fs.readFileSync(configPath));
+    return config.storage_path;
+  } catch (error) {
+    return null;
+  }
+}

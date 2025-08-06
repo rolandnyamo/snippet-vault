@@ -5,6 +5,7 @@ import ItemList from './ItemList';
 import DetailPanel from './DetailPanel';
 import ItemModal from './ItemModal';
 import SmartAddModal from './SmartAddModal';
+import SettingsModal from './SettingsModal';
 
 const { ipcRenderer } = window.require('electron');
 
@@ -14,10 +15,12 @@ const AppShell: React.FC = () => {
   const [activeTab, setActiveTab] = useState<Tab>('recent');
   const [searchQuery, setSearchQuery] = useState('');
   const [items, setItems] = useState<Item[]>([]);
+  const [allItems, setAllItems] = useState<Item[]>([]);
   const [filteredItems, setFilteredItems] = useState<Item[]>([]);
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSmartAddOpen, setIsSmartAddOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Item | null>(null);
 
   useEffect(() => {
@@ -31,9 +34,45 @@ const AppShell: React.FC = () => {
 
     const handleRecentItems = (event: any, recentItems: Item[]) => {
       setItems(recentItems);
-      if (!searchQuery) {
+      if (!searchQuery && activeTab === 'recent') {
         setFilteredItems(recentItems);
       }
+    };
+
+    const handleAllItems = (event: any, allItems: Item[]) => {
+      setAllItems(allItems);
+      if (!searchQuery && activeTab === 'all') {
+        setFilteredItems(allItems);
+      }
+    };
+
+    const handleItemDeleted = (event: any, deletedItemId: string) => {
+      // Remove from both lists and clear selection if deleted item was selected
+      setItems(prev => prev.filter(item => item.id !== deletedItemId));
+      setAllItems(prev => prev.filter(item => item.id !== deletedItemId));
+      setFilteredItems(prev => prev.filter(item => item.id !== deletedItemId));
+      
+      if (selectedItem?.id === deletedItemId) {
+        setSelectedItem(null);
+      }
+      
+      // Close modal if we're deleting the currently edited item
+      if (editingItem?.id === deletedItemId) {
+        setIsModalOpen(false);
+        setEditingItem(null);
+      }
+      
+      // Refresh the current tab
+      if (activeTab === 'recent') {
+        ipcRenderer.send('get-recent-items');
+      } else {
+        ipcRenderer.send('get-all-items');
+      }
+    };
+
+    const handleItemDeleteError = (event: any, error: string) => {
+      console.error('Error deleting item:', error);
+      alert(`Failed to delete item: ${error}`);
     };
 
     const handleItemAdded = (event: any, addedItem: any) => {
@@ -48,24 +87,46 @@ const AppShell: React.FC = () => {
 
     ipcRenderer.on('search-results', handleSearchResults);
     ipcRenderer.on('recent-items', handleRecentItems);
+    ipcRenderer.on('all-items', handleAllItems);
     ipcRenderer.on('item-added', handleItemAdded);
     ipcRenderer.on('item-add-error', handleItemAddError);
+    ipcRenderer.on('item-deleted', handleItemDeleted);
+    ipcRenderer.on('item-delete-error', handleItemDeleteError);
 
     return () => {
       ipcRenderer.removeListener('search-results', handleSearchResults);
       ipcRenderer.removeListener('recent-items', handleRecentItems);
+      ipcRenderer.removeListener('all-items', handleAllItems);
       ipcRenderer.removeListener('item-added', handleItemAdded);
       ipcRenderer.removeListener('item-add-error', handleItemAddError);
+      ipcRenderer.removeListener('item-deleted', handleItemDeleted);
+      ipcRenderer.removeListener('item-delete-error', handleItemDeleteError);
     };
-  }, [searchQuery]);
+  }, [searchQuery, activeTab]);
 
   useEffect(() => {
     if (searchQuery.trim()) {
       ipcRenderer.send('search-items', searchQuery);
     } else {
-      setFilteredItems(items);
+      // Show items based on active tab
+      if (activeTab === 'recent') {
+        setFilteredItems(items);
+      } else {
+        setFilteredItems(allItems);
+      }
     }
-  }, [searchQuery, items]);
+  }, [searchQuery, items, allItems, activeTab]);
+
+  const handleTabChange = (tab: Tab) => {
+    setActiveTab(tab);
+    setSearchQuery(''); // Clear search when switching tabs
+    
+    if (tab === 'recent') {
+      ipcRenderer.send('get-recent-items');
+    } else {
+      ipcRenderer.send('get-all-items');
+    }
+  };
 
   const handleSearch = (query: string) => {
     setSearchQuery(query);
@@ -89,6 +150,16 @@ const AppShell: React.FC = () => {
   const handleEditItem = (item: Item) => {
     setEditingItem(item);
     setIsModalOpen(true);
+  };
+
+  const handleDeleteItem = (itemId: string) => {
+    ipcRenderer.send('delete-item', itemId);
+    setIsModalOpen(false);
+    setEditingItem(null);
+  };
+
+  const handleSettings = () => {
+    setIsSettingsOpen(true);
   };
 
   const handleSaveItem = (itemData: { type: ItemType; description: string; payload: string }) => {
@@ -151,20 +222,20 @@ const AppShell: React.FC = () => {
         <div className="tab-bar">
           <button 
             className={`tab ${activeTab === 'recent' ? 'active' : ''}`}
-            onClick={() => setActiveTab('recent')}
+            onClick={() => handleTabChange('recent')}
           >
             Recent
           </button>
           <button 
             className={`tab ${activeTab === 'all' ? 'active' : ''}`}
-            onClick={() => setActiveTab('all')}
+            onClick={() => handleTabChange('all')}
           >
             All
           </button>
           <button className="add-button" onClick={handleAddItem}>
             + New
           </button>
-          <button className="settings-button">
+          <button className="settings-button" onClick={handleSettings}>
             ⚙︎
           </button>
         </div>
@@ -176,6 +247,7 @@ const AppShell: React.FC = () => {
           <ItemList 
             items={filteredItems}
             onItemSelect={handleItemSelect}
+            onItemDelete={handleDeleteItem}
             selectedItem={selectedItem}
             searchQuery={searchQuery}
           />
@@ -195,6 +267,7 @@ const AppShell: React.FC = () => {
         <ItemModal
           item={editingItem}
           onSave={handleSaveItem}
+          onDelete={handleDeleteItem}
           onCancel={() => {
             setIsModalOpen(false);
             setEditingItem(null);
@@ -206,6 +279,12 @@ const AppShell: React.FC = () => {
         <SmartAddModal
           onSave={handleSmartAddSave}
           onCancel={handleSmartAddCancel}
+        />
+      )}
+
+      {isSettingsOpen && (
+        <SettingsModal
+          onClose={() => setIsSettingsOpen(false)}
         />
       )}
     </div>

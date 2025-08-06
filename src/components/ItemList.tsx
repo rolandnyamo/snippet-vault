@@ -5,6 +5,7 @@ import ItemRow from './ItemRow';
 interface ItemListProps {
   items: Item[];
   onItemSelect: (item: Item) => void;
+  onItemDelete?: (itemId: string) => void;
   selectedItem: Item | null;
   searchQuery: string;
 }
@@ -12,6 +13,7 @@ interface ItemListProps {
 const ItemList: React.FC<ItemListProps> = ({ 
   items, 
   onItemSelect, 
+  onItemDelete,
   selectedItem, 
   searchQuery 
 }) => {
@@ -58,6 +60,7 @@ const ItemList: React.FC<ItemListProps> = ({
           timeAgo={formatTimeAgo(item.last_accessed_at)}
           onClick={() => onItemSelect(item)}
           onKeyDown={(e) => handleKeyDown(e, item)}
+          onDelete={onItemDelete}
           searchQuery={searchQuery}
         />
       ))}

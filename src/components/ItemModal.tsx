@@ -6,9 +6,10 @@ interface ItemModalProps {
   item?: Item | null;
   onSave: (itemData: { type: ItemType; description: string; payload: string }) => void;
   onCancel: () => void;
+  onDelete?: (itemId: string) => void;
 }
 
-const ItemModal: React.FC<ItemModalProps> = ({ item, onSave, onCancel }) => {
+const ItemModal: React.FC<ItemModalProps> = ({ item, onSave, onCancel, onDelete }) => {
   const [type, setType] = useState<ItemType>('link');
   const [description, setDescription] = useState('');
   const [payload, setPayload] = useState('');
@@ -58,8 +59,27 @@ const ItemModal: React.FC<ItemModalProps> = ({ item, onSave, onCancel }) => {
     });
   };
 
+  const handleDelete = () => {
+    if (!item || !onDelete) return;
+    
+    const confirmed = window.confirm(
+      'Are you sure you want to delete this item? This action cannot be undone.'
+    );
+    
+    if (confirmed) {
+      onDelete(item.id);
+    }
+  };
+
   const handleCancel = useCallback(() => {
-    const hasUnsavedChanges = description.trim() || payload.trim();
+    // Check if there are unsaved changes by comparing with original values
+    const originalDescription = item?.description || '';
+    const originalPayload = item?.payload || '';
+    
+    const hasUnsavedChanges = (
+      description.trim() !== originalDescription.trim() || 
+      payload.trim() !== originalPayload.trim()
+    );
     
     if (hasUnsavedChanges) {
       const confirmed = window.confirm(
@@ -71,7 +91,7 @@ const ItemModal: React.FC<ItemModalProps> = ({ item, onSave, onCancel }) => {
     }
     
     onCancel();
-  }, [description, payload, onCancel]);
+  }, [description, payload, item, onCancel]);
 
   // Handle ESC key globally when modal is open
   useEffect(() => {
@@ -175,19 +195,32 @@ const ItemModal: React.FC<ItemModalProps> = ({ item, onSave, onCancel }) => {
           </div>
 
           <div className="form-actions">
-            <button 
-              type="button" 
-              className="action-button secondary"
-              onClick={handleCancel}
-            >
-              Cancel
-            </button>
-            <button 
-              type="submit" 
-              className="action-button primary"
-            >
-              Save
-            </button>
+            <div className="left-actions">
+              {item && onDelete && (
+                <button 
+                  type="button" 
+                  className="action-button danger"
+                  onClick={handleDelete}
+                >
+                  Delete
+                </button>
+              )}
+            </div>
+            <div className="right-actions">
+              <button 
+                type="button" 
+                className="action-button secondary"
+                onClick={handleCancel}
+              >
+                Cancel
+              </button>
+              <button 
+                type="submit" 
+                className="action-button primary"
+              >
+                Save
+              </button>
+            </div>
           </div>
         </form>
       </div>
