@@ -107,13 +107,13 @@ async function searchItems(query, configPath) {
   const embedder = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
   const queryEmbedding = await embedder(query, { pooling: 'mean', normalize: true });
 
-  const results = await table
+  const rawResults = await table
     .search(Array.from(queryEmbedding.data))
     .where(`description LIKE '%${query}%'`)
     .limit(10)
-    .execute();
+    .toArray();
 
-  return results;
+  return rawResults.map(({ vector, ...rest }) => rest);
 }
 
 async function getRecentItems(configPath) {
@@ -121,12 +121,23 @@ async function getRecentItems(configPath) {
   const db = await lancedb.connect(config.storage_path);
   const table = await db.openTable('items');
 
-  const results = await table.query({
-    limit: 5,
-    orderBy: 'last_accessed_at DESC',
-  }).execute();
+  const items = await table
+    .query()
+    .select([
+      'id',
+      'type',
+      'payload',
+      'description',
+      'created_at',
+      'last_accessed_at',
+      'embedding_model',
+    ])
+    .toArray();
 
-  return results;
+  return items
+    .sort((a, b) => new Date(b.last_accessed_at) - new Date(a.last_accessed_at))
+    .slice(0, 5)
+    .map(({ vector, ...rest }) => rest);
 }
 
 module.exports = { initializeDatabase, get_config_path, addItem, searchItems, getRecentItems };
