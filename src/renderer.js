@@ -8,6 +8,14 @@ document.getElementById('add-item-form').addEventListener('submit', (evt) => {
   const description = document.getElementById('item-description').value;
 
   ipcRenderer.send('add-item', { type, payload, description });
+
+  // Clear the form
+  document.getElementById('item-type').value = 'text';
+  document.getElementById('item-payload').value = '';
+  document.getElementById('item-description').value = '';
+
+  // Refresh the recent items
+  ipcRenderer.send('get-recent-items');
 });
 
 document.getElementById('search-box').addEventListener('input', (evt) => {
