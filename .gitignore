@@ -1,1 +1,10 @@
 node_modules
+dist/
+
+# Built application packages
+out/
+*.dmg
+*.exe
+*.deb
+*.rpm
+*.zip

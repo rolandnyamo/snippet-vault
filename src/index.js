@@ -1,25 +1,45 @@
-const { app, BrowserWindow, dialog, ipcMain } = require('electron');
-const path = require('node:path');
-const { initializeDatabase, get_config_path, addItem, searchItems, getRecentItems } = require('./store');
+// Force transformers to use web backend only (MUST be before any other imports)
+process.env.TRANSFORMERS_BACKEND = 'web';
+process.env.TRANSFORMERS_FORCE_WEB = 'true';
+process.env.ONNX_WEB = 'true';
+process.env.ONNXRUNTIME_NODE_DISABLED = 'true';
+
+import { app, BrowserWindow, dialog, ipcMain } from 'electron';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+import { initializeDatabase, get_config_path, addItem, searchItems, getRecentItems } from './store.js';
+
+// Get the current directory for ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
-if (require('electron-squirrel-startup')) {
+// Note: We need to use dynamic import for this CommonJS module
+const { default: electronSquirrelStartup } = await import('electron-squirrel-startup');
+if (electronSquirrelStartup) {
   app.quit();
 }
 
 const createWindow = () => {
   // Create the browser window.
   const mainWindow = new BrowserWindow({
-    width: 800,
-    height: 600,
+    width: 1200,
+    height: 800,
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
+      enableRemoteModule: true,
     },
   });
 
   // and load the index.html of the app.
-  mainWindow.loadFile(path.join(__dirname, 'index.html'));
+  const isDev = process.env.NODE_ENV === 'development';
+  if (isDev) {
+    mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
+  } else {
+    mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
+  }
 
   // Open the DevTools.
   mainWindow.webContents.openDevTools();
@@ -33,9 +53,15 @@ app.whenReady().then(async () => {
   await initializeDatabase(configPath, dialog, app);
   createWindow();
 
-  ipcMain.on('add-item', (event, item) => {
+  ipcMain.on('add-item', async (event, item) => {
     const configPath = get_config_path(app.getPath('userData'));
-    addItem(item, configPath);
+    try {
+      await addItem(item, configPath);
+      event.sender.send('item-added', item);
+    } catch (error) {
+      console.error('Error adding item:', error);
+      event.sender.send('item-add-error', error.message);
+    }
   });
 
   ipcMain.on('search-items', async (event, query) => {

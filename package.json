@@ -4,25 +4,49 @@
   "version": "1.0.0",
   "description": "My Electron application description",
   "main": "src/index.js",
+  "type": "module",
   "scripts": {
-    "start": "electron-forge start",
+    "build": "webpack --config webpack.config.cjs",
+    "build:watch": "webpack --watch --config webpack.config.cjs",
+    "download-models": "node scripts/download-model.js",
+    "prebuild": "npm run download-models",
+    "start": "npm run build && electron-forge start",
     "package": "electron-forge package",
     "make": "electron-forge make",
+    "make:mac": "electron-forge make --platform=darwin",
+    "make:win": "electron-forge make --platform=win32",
+    "make:linux": "electron-forge make --platform=linux",
     "publish": "electron-forge publish",
     "lint": "echo \"No linting configured\"",
     "test": "npx jest"
   },
-  "keywords": [],
+  "keywords": [
+    "kusto",
+    "snippets",
+    "code",
+    "vault",
+    "search"
+  ],
   "author": {
     "name": "roland nyamoga",
     "email": "rolandn1844@gmail.com"
   },
   "license": "MIT",
+  "homepage": "https://github.com/rolandnyamo/snippet-vault",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rolandnyamo/snippet-vault.git"
+  },
   "dependencies": {
+    "@babel/preset-react": "^7.27.1",
     "@lancedb/lancedb": "^0.21.2",
+    "@types/react": "^19.1.9",
+    "@types/react-dom": "^19.1.7",
     "@xenova/transformers": "^2.17.2",
     "apache-arrow": "^18.0.0",
     "electron-squirrel-startup": "^1.0.1",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
     "uuid": "^11.1.0"
   },
   "devDependencies": {
@@ -37,8 +61,17 @@
     "@electron-forge/plugin-auto-unpack-natives": "^7.8.3",
     "@electron-forge/plugin-fuses": "^7.8.3",
     "@electron/fuses": "^1.8.0",
+    "@types/node": "^24.2.0",
     "babel-jest": "^30.0.5",
     "cross-env": "^10.0.0",
-    "electron": "37.2.5"
+    "css-loader": "^7.1.2",
+    "electron": "37.2.5",
+    "html-webpack-plugin": "^5.6.3",
+    "onnxruntime-node": "^1.22.0-rev",
+    "style-loader": "^4.0.0",
+    "ts-loader": "^9.5.2",
+    "typescript": "^5.9.2",
+    "webpack": "^5.101.0",
+    "webpack-cli": "^6.0.1"
   }
 }
