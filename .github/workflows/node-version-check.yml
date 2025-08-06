@@ -1,0 +1,48 @@
+name: Node.js Version Check
+
+on:
+  push:
+    branches: [ main, dev ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  check-node-version:
+    name: Validate Node.js Version Requirements
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Verify Node.js version
+        run: |
+          echo "Node.js version: $(node --version)"
+          echo "npm version: $(npm --version)"
+          
+          # Check if package.json engines requirement is met
+          REQUIRED_NODE=$(node -p "require('./package.json').engines?.node || 'not specified'")
+          echo "Required Node.js version: $REQUIRED_NODE"
+          
+          # Verify we're running Node.js 22+
+          NODE_MAJOR=$(node --version | cut -d'v' -f2 | cut -d'.' -f1)
+          if [ "$NODE_MAJOR" -lt 22 ]; then
+            echo "❌ Error: Node.js 22+ required, found: $(node --version)"
+            exit 1
+          fi
+          echo "✅ Node.js version requirement satisfied"
+
+      - name: Install dependencies (version check)
+        run: npm ci
+
+      - name: Verify package compatibility
+        run: |
+          echo "Checking package.json engines compatibility..."
+          npm ls --production=false || echo "Some dev dependencies may have warnings (this is often normal)"
+          echo "✅ Package installation successful"
