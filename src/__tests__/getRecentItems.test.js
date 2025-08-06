@@ -4,14 +4,14 @@ jest.mock('fs');
 
 describe('getRecentItems', () => {
   it('should return recent items', async () => {
-    const mockTable = {
-      select: jest.fn().mockReturnThis(),
-      orderBy: jest.fn().mockReturnThis(),
-      limit: jest.fn().mockReturnThis(),
-      execute: jest.fn().mockResolvedValue([
-        { description: 'recent item 1' },
-        { description: 'recent item 2' },
+    const mockQuery = {
+      toArray: jest.fn().mockResolvedValue([
+        { description: 'recent item 2', last_accessed_at: '2024-01-01' },
+        { description: 'recent item 1', last_accessed_at: '2024-02-01' },
       ]),
+    };
+    const mockTable = {
+      query: jest.fn().mockReturnValue(mockQuery),
     };
     const mockDb = {
       openTable: jest.fn().mockResolvedValue(mockTable),

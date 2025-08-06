@@ -121,12 +121,11 @@ async function getRecentItems(configPath) {
   const db = await lancedb.connect(config.storage_path);
   const table = await db.openTable('items');
 
-  const results = await table.query({
-    limit: 5,
-    orderBy: 'last_accessed_at DESC',
-  }).execute();
+  const items = await table.query().toArray();
 
-  return results;
+  return items
+    .sort((a, b) => new Date(b.last_accessed_at) - new Date(a.last_accessed_at))
+    .slice(0, 5);
 }
 
 module.exports = { initializeDatabase, get_config_path, addItem, searchItems, getRecentItems };
