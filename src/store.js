@@ -113,7 +113,7 @@ async function searchItems(query, configPath) {
     .limit(10)
     .execute();
 
-  return results;
+  return results.map(r => Object.fromEntries(Object.entries(r)));
 }
 
 async function getRecentItems(configPath) {
@@ -121,9 +121,12 @@ async function getRecentItems(configPath) {
   const db = await lancedb.connect(config.storage_path);
   const table = await db.openTable('items');
 
-  const results = await table.select('*').orderBy('last_accessed_at DESC').limit(5).execute();
+  const results = await table.query({
+    limit: 5,
+    orderBy: 'last_accessed_at DESC',
+  });
 
-  return results;
+  return results.toArray().map(Object.fromEntries);
 }
 
 module.exports = { initializeDatabase, get_config_path, addItem, searchItems, getRecentItems };
