@@ -1,0 +1,48 @@
+name: Build and Test
+
+on:
+  push:
+    branches: [ main, dev ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test-build:
+    name: Test Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Download models (required for offline operation)
+        run: npm run download-models
+
+      - name: Build application
+        run: npm run build
+
+      - name: Package application (test)
+        run: npm run package
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: List package output (debug)
+        run: |
+          echo "Package output structure:"
+          find out -type f -name "*.app" -o -name "*.exe" -o -name "Snippet*" || echo "No package artifacts found"
+        shell: bash
