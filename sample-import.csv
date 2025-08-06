@@ -1,4 +1,0 @@
-type,description,payload
-code,JavaScript Array Methods,const numbers = [1 2 3 4 5]; const doubled = numbers.map(x => x * 2); const filtered = numbers.filter(x => x > 2);
-snippet,SQL Join Query,SELECT u.name p.title FROM users u JOIN posts p ON u.id = p.user_id WHERE u.active = 1;
-text,Git Commands Cheatsheet,git status - Check repository status; git add . - Stage all changes; git commit -m "message" - Commit changes; git push - Push to remote
