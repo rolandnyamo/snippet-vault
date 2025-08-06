@@ -10,6 +10,7 @@ interface DetailPanelProps {
 
 const DetailPanel: React.FC<DetailPanelProps> = ({ item, onEdit, onCopy, searchQuery }) => {
   const [showCopySuccess, setShowCopySuccess] = useState(false);
+
   const getTypeLabel = (type: string): string => {
     switch (type) {
       case 'kusto_query': return 'Kusto Query';
@@ -106,7 +107,7 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ item, onEdit, onCopy, searchQ
               onClick={handleCopy}
               title={showCopySuccess ? 'Copied!' : 'Copy to clipboard'}
             >
-              {showCopySuccess ? '✓' : '�'}
+              {showCopySuccess ? 'Copied!' : 'Copy'}
             </button>
           </div>
           <pre className="payload-text">
