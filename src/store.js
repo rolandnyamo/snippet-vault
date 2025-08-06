@@ -7,6 +7,9 @@ import { fileURLToPath } from 'url';
 import { v4 as uuidv4 } from 'uuid';
 import * as arrow from 'apache-arrow';
 
+// Current embedding model identifier
+const CURRENT_EMBEDDING_MODEL = 'tensorflow/universal-sentence-encoder@3.3.0';
+
 // Get the current directory for ES modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -81,24 +84,40 @@ export async function initializeDatabase(configPath, dialog, app) {
     try {
       db = await lancedb.connect(config.storage_path);
       const tables = await db.tableNames();
-      if (!tables.includes('items')) {
-        // Let LanceDB infer the schema from the first row of data
-        // This is more reliable than manually defining complex schemas
-        const sampleData = [{
+      
+      // Initialize raw items table (backup/export source)
+      if (!tables.includes('items_raw')) {
+        const sampleRawData = [{
           id: 'sample',
           type: 'text',
           payload: 'sample payload',
           description: 'sample description',
           created_at: new Date().toISOString(),
           last_accessed_at: new Date().toISOString(),
-          embedding_model: 'tensorflow/universal-sentence-encoder',
-          vector: new Array(512).fill(0.0), // Sample 512-dimensional vector
         }];
         
-        const table = await db.createTable('items', sampleData);
-        // Remove the sample data
-        await table.delete('id = "sample"');
+        const rawTable = await db.createTable('items_raw', sampleRawData);
+        await rawTable.delete('id = "sample"');
       }
+      
+      // Initialize embeddings table
+      if (!tables.includes('items_embeddings')) {
+        const sampleEmbeddingData = [{
+          id: 'sample',
+          embedding_model: CURRENT_EMBEDDING_MODEL,
+          vector: new Array(512).fill(0.0),
+          created_at: new Date().toISOString(),
+        }];
+        
+        const embeddingTable = await db.createTable('items_embeddings', sampleEmbeddingData);
+        await embeddingTable.delete('id = "sample"');
+      }
+      
+      // Legacy: Keep old 'items' table for backward compatibility, but migrate data
+      if (tables.includes('items')) {
+        await migrateLegacyData(db);
+      }
+      
       break; // Success, exit loop
     } catch (err) {
       console.error('Error initializing database:', err);
@@ -110,13 +129,121 @@ export async function initializeDatabase(configPath, dialog, app) {
       });
 
       if (response === 1) { // Retry
-        // Try again with the same path
         continue;
       } else {
         app.quit();
         return;
       }
     }
+  }
+}
+
+/**
+ * Migrate data from legacy 'items' table to new split architecture
+ */
+async function migrateLegacyData(db) {
+  try {
+    console.log('Migrating legacy data to new architecture...');
+    const legacyTable = await db.openTable('items');
+    const legacyItems = await legacyTable.query().toArray();
+    
+    if (legacyItems.length === 0) {
+      console.log('No legacy data to migrate');
+      return;
+    }
+    
+    const rawTable = await db.openTable('items_raw');
+    const embeddingTable = await db.openTable('items_embeddings');
+    
+    for (const item of legacyItems) {
+      // Check if already migrated
+      const existingRaw = await rawTable.query().where(`id = "${item.id}"`).toArray();
+      if (existingRaw.length > 0) continue;
+      
+      // Add to raw table
+      await rawTable.add([{
+        id: item.id,
+        type: item.type,
+        payload: item.payload,
+        description: item.description,
+        created_at: item.created_at,
+        last_accessed_at: item.last_accessed_at,
+      }]);
+      
+      // Convert vector to regular array if it's a Float32Array or similar
+      let vectorArray = item.vector;
+      if (vectorArray && typeof vectorArray === 'object' && vectorArray.length !== undefined) {
+        vectorArray = Array.from(vectorArray);
+      }
+      
+      // Add to embeddings table
+      await embeddingTable.add([{
+        id: item.id,
+        embedding_model: item.embedding_model || 'tensorflow/universal-sentence-encoder',
+        vector: vectorArray || new Array(512).fill(0.0),
+        created_at: item.created_at,
+      }]);
+    }
+    
+    console.log(`Migrated ${legacyItems.length} items to new architecture`);
+    
+    // Don't drop legacy table immediately - keep it as backup for now
+    console.log('Legacy table preserved as backup');
+  } catch (error) {
+    console.error('Error migrating legacy data:', error);
+    // Don't throw - let the app continue with legacy table if migration fails
+  }
+}
+
+/**
+ * Get current embedding model identifier
+ */
+export function getCurrentEmbeddingModel() {
+  return CURRENT_EMBEDDING_MODEL;
+}
+
+/**
+ * Check if embedding needs regeneration and regenerate if necessary
+ */
+async function ensureEmbeddingCurrent(itemId, db) {
+  try {
+    const embeddingTable = await db.openTable('items_embeddings');
+    const embeddings = await embeddingTable.query().where(`id = "${itemId}"`).toArray();
+    
+    if (embeddings.length === 0) return null;
+    
+    const embedding = embeddings[0];
+    if (embedding.embedding_model !== CURRENT_EMBEDDING_MODEL) {
+      console.log(`Regenerating embedding for item ${itemId}: ${embedding.embedding_model} -> ${CURRENT_EMBEDDING_MODEL}`);
+      
+      // Get raw data
+      const rawTable = await db.openTable('items_raw');
+      const rawItems = await rawTable.query().where(`id = "${itemId}"`).toArray();
+      
+      if (rawItems.length === 0) {
+        console.error(`No raw data found for item ${itemId}`);
+        return embedding.vector;
+      }
+      
+      const rawItem = rawItems[0];
+      const newEmbedding = await generateEmbedding(rawItem.payload + ' ' + rawItem.description);
+      
+      // Update embedding
+      await embeddingTable.delete(`id = "${itemId}"`);
+      await embeddingTable.add([{
+        id: itemId,
+        embedding_model: CURRENT_EMBEDDING_MODEL,
+        vector: newEmbedding,
+        created_at: new Date().toISOString(),
+      }]);
+      
+      return newEmbedding;
+    }
+    
+    return embedding.vector;
+  } catch (error) {
+    console.error('Error ensuring embedding current:', error);
+    return null;
   }
 }
 
@@ -132,22 +259,33 @@ async function generateEmbedding(text) {
 
 export async function addItem(item, configPath) {
   try {
+    const itemId = uuidv4();
+    const now = new Date().toISOString();
     const embedding = await generateEmbedding(item.payload + ' ' + item.description);
 
     const config = JSON.parse(fs.readFileSync(configPath));
     const db = await lancedb.connect(config.storage_path);
-    const table = await db.openTable('items');
-
-    await table.add([{
-      id: uuidv4(),
+    
+    // Add to raw table (backup/export source)
+    const rawTable = await db.openTable('items_raw');
+    await rawTable.add([{
+      id: itemId,
       type: item.type,
       payload: item.payload,
       description: item.description,
-      created_at: new Date().toISOString(),
-      last_accessed_at: new Date().toISOString(),
-      embedding_model: 'tensorflow/universal-sentence-encoder',
-      vector: embedding,
+      created_at: now,
+      last_accessed_at: now,
     }]);
+    
+    // Add to embeddings table
+    const embeddingTable = await db.openTable('items_embeddings');
+    await embeddingTable.add([{
+      id: itemId,
+      embedding_model: CURRENT_EMBEDDING_MODEL,
+      vector: embedding,
+      created_at: now,
+    }]);
+    
   } catch (error) {
     console.error('Detailed error in addItem:', error);
     console.error('Error stack:', error.stack);
@@ -158,7 +296,6 @@ export async function addItem(item, configPath) {
 export async function searchItems(query, configPath) {
   const config = JSON.parse(fs.readFileSync(configPath));
   const db = await lancedb.connect(config.storage_path);
-  const table = await db.openTable('items');
 
   if (!query) {
     return [];
@@ -167,15 +304,57 @@ export async function searchItems(query, configPath) {
   try {
     const queryEmbedding = await generateEmbedding(query);
 
-    // Make search case-insensitive and search both description and payload
+    // Join raw data with embeddings for search
+    const rawTable = await db.openTable('items_raw');
+    const embeddingTable = await db.openTable('items_embeddings');
+
+    // Get all raw items that match text search
     const searchPattern = query.toLowerCase();
-    const rawResults = await table
-      .search(queryEmbedding)
+    const rawResults = await rawTable
+      .query()
       .where(`LOWER(description) LIKE '%${searchPattern}%' OR LOWER(payload) LIKE '%${searchPattern}%'`)
+      .toArray();
+
+    // For each result, get/update embedding and calculate similarity
+    const results = [];
+    for (const rawItem of rawResults) {
+      await ensureEmbeddingCurrent(rawItem.id, db);
+      
+      const embeddings = await embeddingTable.query().where(`id = "${rawItem.id}"`).toArray();
+      if (embeddings.length > 0) {
+        results.push({
+          ...rawItem,
+          embedding_model: embeddings[0].embedding_model,
+        });
+      }
+    }
+
+    // Also do vector search on embeddings
+    const vectorResults = await embeddingTable
+      .search(queryEmbedding)
       .limit(10)
       .toArray();
 
-    return rawResults.map(({ vector, ...rest }) => rest);
+    // Combine and deduplicate results
+    const allResults = new Map();
+    
+    // Add text search results
+    results.forEach(item => allResults.set(item.id, item));
+    
+    // Add vector search results
+    for (const vectorResult of vectorResults) {
+      if (!allResults.has(vectorResult.id)) {
+        const rawItems = await rawTable.query().where(`id = "${vectorResult.id}"`).toArray();
+        if (rawItems.length > 0) {
+          allResults.set(vectorResult.id, {
+            ...rawItems[0],
+            embedding_model: vectorResult.embedding_model,
+          });
+        }
+      }
+    }
+
+    return Array.from(allResults.values()).slice(0, 10);
   } catch (error) {
     console.error('Detailed error in searchItems:', error);
     console.error('Error stack:', error.stack);
@@ -186,34 +365,91 @@ export async function searchItems(query, configPath) {
 export async function getRecentItems(configPath) {
   const config = JSON.parse(fs.readFileSync(configPath));
   const db = await lancedb.connect(config.storage_path);
-  const table = await db.openTable('items');
+  const tables = await db.tableNames();
+  
+  // Check if we have the new architecture
+  if (tables.includes('items_raw') && tables.includes('items_embeddings')) {
+    const rawTable = await db.openTable('items_raw');
+    const embeddingTable = await db.openTable('items_embeddings');
 
-  const items = await table
-    .query()
-    .select([
-      'id',
-      'type',
-      'payload',
-      'description',
-      'created_at',
-      'last_accessed_at',
-      'embedding_model',
-    ])
-    .toArray();
+    const items = await rawTable.query().toArray();
+    
+    // If no items in new tables but legacy table exists, try migration again
+    if (items.length === 0 && tables.includes('items')) {
+      await migrateLegacyData(db);
+      // Retry after migration
+      const itemsAfterMigration = await rawTable.query().toArray();
+      if (itemsAfterMigration.length === 0) {
+        // Fallback to legacy table
+        return await getLegacyRecentItems(db);
+      }
+    }
+    
+    // Ensure embeddings are current for recent items
+    const recentItems = items
+      .sort((a, b) => new Date(b.last_accessed_at) - new Date(a.last_accessed_at))
+      .slice(0, 5);
+      
+    const results = [];
+    for (const item of recentItems) {
+      await ensureEmbeddingCurrent(item.id, db);
+      const embeddings = await embeddingTable.query().where(`id = "${item.id}"`).toArray();
+      results.push({
+        ...item,
+        embedding_model: embeddings.length > 0 ? embeddings[0].embedding_model : 'unknown',
+      });
+    }
 
-  return items
-    .sort((a, b) => new Date(b.last_accessed_at) - new Date(a.last_accessed_at))
-    .slice(0, 5)
-    .map(({ vector, ...rest }) => rest);
+    return results;
+  } else {
+    // Fallback to legacy table
+    return await getLegacyRecentItems(db);
+  }
+}
+
+/**
+ * Fallback function to read from legacy table
+ */
+async function getLegacyRecentItems(db) {
+  try {
+    const tables = await db.tableNames();
+    if (!tables.includes('items')) return [];
+    
+    const table = await db.openTable('items');
+    const items = await table
+      .query()
+      .select([
+        'id',
+        'type',
+        'payload',
+        'description',
+        'created_at',
+        'last_accessed_at',
+        'embedding_model',
+      ])
+      .toArray();
+
+    return items
+      .sort((a, b) => new Date(b.last_accessed_at) - new Date(a.last_accessed_at))
+      .slice(0, 5)
+      .map(({ vector, ...rest }) => rest);
+  } catch (error) {
+    console.error('Error reading from legacy table:', error);
+    return [];
+  }
 }
 
 export async function deleteItem(itemId, configPath) {
   try {
     const config = JSON.parse(fs.readFileSync(configPath));
     const db = await lancedb.connect(config.storage_path);
-    const table = await db.openTable('items');
-
-    await table.delete(`id = "${itemId}"`);
+    
+    // Delete from both tables
+    const rawTable = await db.openTable('items_raw');
+    const embeddingTable = await db.openTable('items_embeddings');
+    
+    await rawTable.delete(`id = "${itemId}"`);
+    await embeddingTable.delete(`id = "${itemId}"`);
   } catch (error) {
     console.error('Detailed error in deleteItem:', error);
     console.error('Error stack:', error.stack);
@@ -225,8 +461,57 @@ export async function getAllItems(configPath) {
   try {
     const config = JSON.parse(fs.readFileSync(configPath));
     const db = await lancedb.connect(config.storage_path);
-    const table = await db.openTable('items');
+    const tables = await db.tableNames();
+    
+    // Check if we have the new architecture
+    if (tables.includes('items_raw') && tables.includes('items_embeddings')) {
+      const rawTable = await db.openTable('items_raw');
+      const embeddingTable = await db.openTable('items_embeddings');
 
+      const items = await rawTable.query().toArray();
+      
+      // If no items in new tables but legacy table exists, try migration again
+      if (items.length === 0 && tables.includes('items')) {
+        await migrateLegacyData(db);
+        // Retry after migration
+        const itemsAfterMigration = await rawTable.query().toArray();
+        if (itemsAfterMigration.length === 0) {
+          // Fallback to legacy table
+          return await getLegacyAllItems(db);
+        }
+      }
+      
+      const results = [];
+      for (const item of items) {
+        await ensureEmbeddingCurrent(item.id, db);
+        const embeddings = await embeddingTable.query().where(`id = "${item.id}"`).toArray();
+        results.push({
+          ...item,
+          embedding_model: embeddings.length > 0 ? embeddings[0].embedding_model : 'unknown',
+        });
+      }
+
+      return results.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    } else {
+      // Fallback to legacy table
+      return await getLegacyAllItems(db);
+    }
+  } catch (error) {
+    console.error('Detailed error in getAllItems:', error);
+    console.error('Error stack:', error.stack);
+    throw new Error(`Failed to get all items: ${error.message}`);
+  }
+}
+
+/**
+ * Fallback function to read all items from legacy table
+ */
+async function getLegacyAllItems(db) {
+  try {
+    const tables = await db.tableNames();
+    if (!tables.includes('items')) return [];
+    
+    const table = await db.openTable('items');
     const items = await table
       .query()
       .select([
@@ -244,22 +529,27 @@ export async function getAllItems(configPath) {
       .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
       .map(({ vector, ...rest }) => rest);
   } catch (error) {
-    console.error('Detailed error in getAllItems:', error);
-    console.error('Error stack:', error.stack);
-    throw new Error(`Failed to get all items: ${error.message}`);
+    console.error('Error reading all items from legacy table:', error);
+    return [];
   }
 }
 
 export async function exportData(configPath, format = 'json') {
   try {
-    const items = await getAllItems(configPath);
+    // Export from raw table - this is the clean backup data
+    const config = JSON.parse(fs.readFileSync(configPath));
+    const db = await lancedb.connect(config.storage_path);
+    const rawTable = await db.openTable('items_raw');
+    const items = await rawTable.query().toArray();
+    
+    const sortedItems = items.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
     
     if (format === 'csv') {
       // Convert to CSV format
-      const headers = ['id', 'type', 'description', 'payload', 'created_at', 'last_accessed_at', 'embedding_model'];
+      const headers = ['id', 'type', 'description', 'payload', 'created_at', 'last_accessed_at'];
       const csvRows = [
         headers.join(','),
-        ...items.map(item => 
+        ...sortedItems.map(item => 
           headers.map(header => {
             const value = item[header] || '';
             // Escape quotes and wrap in quotes if contains comma or quote
@@ -272,7 +562,7 @@ export async function exportData(configPath, format = 'json') {
       return csvRows.join('\n');
     } else {
       // Default to JSON format
-      return JSON.stringify(items, null, 2);
+      return JSON.stringify(sortedItems, null, 2);
     }
   } catch (error) {
     console.error('Detailed error in exportData:', error);
@@ -346,10 +636,11 @@ export async function importData(configPath, importData, format = 'json') {
       }
     }
     
-    // Import each item (this will generate embeddings and append to existing data)
+    // Import each item using the new architecture
     const config = JSON.parse(fs.readFileSync(configPath));
     const db = await lancedb.connect(config.storage_path);
-    const table = await db.openTable('items');
+    const rawTable = await db.openTable('items_raw');
+    const embeddingTable = await db.openTable('items_embeddings');
     
     let successCount = 0;
     let errorCount = 0;
@@ -358,17 +649,26 @@ export async function importData(configPath, importData, format = 'json') {
     for (let i = 0; i < items.length; i++) {
       try {
         const item = items[i];
+        const itemId = item.id || uuidv4(); // Use existing ID if provided
+        const now = new Date().toISOString();
         const embedding = await generateEmbedding(item.payload + ' ' + item.description);
         
-        await table.add([{
-          id: uuidv4(),
+        // Add to raw table
+        await rawTable.add([{
+          id: itemId,
           type: item.type,
           payload: item.payload,
           description: item.description,
-          created_at: item.created_at || new Date().toISOString(),
-          last_accessed_at: item.last_accessed_at || new Date().toISOString(),
-          embedding_model: 'tensorflow/universal-sentence-encoder',
+          created_at: item.created_at || now,
+          last_accessed_at: item.last_accessed_at || now,
+        }]);
+        
+        // Add to embeddings table
+        await embeddingTable.add([{
+          id: itemId,
+          embedding_model: CURRENT_EMBEDDING_MODEL,
           vector: embedding,
+          created_at: now,
         }]);
         
         successCount++;
@@ -399,29 +699,86 @@ export async function deleteAllData(configPath) {
     const config = JSON.parse(fs.readFileSync(configPath));
     const db = await lancedb.connect(config.storage_path);
     
-    // Drop the table and recreate it
-    await db.dropTable('items');
+    // Drop both tables and recreate them
+    await db.dropTable('items_raw');
+    await db.dropTable('items_embeddings');
     
-    // Recreate the table with sample data for schema inference
-    const sampleData = [{
+    // Recreate raw table
+    const sampleRawData = [{
       id: 'sample',
       type: 'text',
       payload: 'sample payload',
       description: 'sample description',
       created_at: new Date().toISOString(),
       last_accessed_at: new Date().toISOString(),
-      embedding_model: 'tensorflow/universal-sentence-encoder',
-      vector: new Array(512).fill(0.0),
     }];
     
-    const table = await db.createTable('items', sampleData);
-    // Remove the sample data
-    await table.delete('id = "sample"');
+    const rawTable = await db.createTable('items_raw', sampleRawData);
+    await rawTable.delete('id = "sample"');
+    
+    // Recreate embeddings table
+    const sampleEmbeddingData = [{
+      id: 'sample',
+      embedding_model: CURRENT_EMBEDDING_MODEL,
+      vector: new Array(512).fill(0.0),
+      created_at: new Date().toISOString(),
+    }];
+    
+    const embeddingTable = await db.createTable('items_embeddings', sampleEmbeddingData);
+    await embeddingTable.delete('id = "sample"');
     
     return { success: true, message: 'All data deleted successfully' };
   } catch (error) {
     console.error('Detailed error in deleteAllData:', error);
     console.error('Error stack:', error.stack);
     throw new Error(`Failed to delete all data: ${error.message}`);
+  }
+}
+
+/**
+ * Force regenerate all embeddings with current model (for testing)
+ */
+export async function regenerateAllEmbeddings(configPath) {
+  try {
+    const config = JSON.parse(fs.readFileSync(configPath));
+    const db = await lancedb.connect(config.storage_path);
+    const rawTable = await db.openTable('items_raw');
+    const embeddingTable = await db.openTable('items_embeddings');
+    
+    const allItems = await rawTable.query().toArray();
+    
+    let regeneratedCount = 0;
+    
+    for (const item of allItems) {
+      try {
+        const newEmbedding = await generateEmbedding(item.payload + ' ' + item.description);
+        
+        // Remove old embedding
+        await embeddingTable.delete(`id = "${item.id}"`);
+        
+        // Add new embedding
+        await embeddingTable.add([{
+          id: item.id,
+          embedding_model: CURRENT_EMBEDDING_MODEL,
+          vector: newEmbedding,
+          created_at: new Date().toISOString(),
+        }]);
+        
+        regeneratedCount++;
+      } catch (error) {
+        console.error(`Error regenerating embedding for item ${item.id}:`, error);
+      }
+    }
+    
+    return {
+      success: true,
+      message: `Regenerated ${regeneratedCount} embeddings with model ${CURRENT_EMBEDDING_MODEL}`,
+      regeneratedCount,
+      totalItems: allItems.length,
+    };
+  } catch (error) {
+    console.error('Detailed error in regenerateAllEmbeddings:', error);
+    console.error('Error stack:', error.stack);
+    throw new Error(`Failed to regenerate embeddings: ${error.message}`);
   }
 }

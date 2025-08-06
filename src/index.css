@@ -721,6 +721,44 @@ body {
   cursor: not-allowed;
 }
 
+/* Model info styles */
+.model-info {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.model-input {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background: #f9f9f9;
+  font-family: 'SF Mono', Monaco, monospace;
+  font-size: 12px;
+  color: #666;
+}
+
+.regenerate-button {
+  padding: 8px 16px;
+  background: #ffa726;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.regenerate-button:hover:not(:disabled) {
+  background: #ff9800;
+}
+
+.regenerate-button:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+}
+
 /* Danger zone styles */
 .danger-section {
   border: 2px solid #ff4757;

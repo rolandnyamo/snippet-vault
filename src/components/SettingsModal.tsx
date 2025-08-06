@@ -11,13 +11,20 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [isDeletingAll, setIsDeletingAll] = useState(false);
+  const [embeddingModel, setEmbeddingModel] = useState<string>('');
+  const [isRegeneratingEmbeddings, setIsRegeneratingEmbeddings] = useState(false);
 
   useEffect(() => {
-    // Get data path when modal opens
+    // Get data path and embedding model when modal opens
     ipcRenderer.send('get-data-path');
+    ipcRenderer.send('get-embedding-model');
 
     const handleDataPath = (event: any, path: string) => {
       setDataPath(path || 'Not found');
+    };
+
+    const handleEmbeddingModel = (event: any, model: string) => {
+      setEmbeddingModel(model);
     };
 
     const handleExportResult = (event: any, data: string, format: string) => {
@@ -64,22 +71,38 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
       alert(`Delete all failed: ${error}`);
     };
 
+    const handleRegenerateEmbeddingsResult = (event: any, result: any) => {
+      setIsRegeneratingEmbeddings(false);
+      alert(result.message);
+    };
+
+    const handleRegenerateEmbeddingsError = (event: any, error: string) => {
+      setIsRegeneratingEmbeddings(false);
+      alert(`Regenerate embeddings failed: ${error}`);
+    };
+
     ipcRenderer.on('data-path', handleDataPath);
+    ipcRenderer.on('embedding-model', handleEmbeddingModel);
     ipcRenderer.on('export-data-result', handleExportResult);
     ipcRenderer.on('export-data-error', handleExportError);
     ipcRenderer.on('import-data-result', handleImportResult);
     ipcRenderer.on('import-data-error', handleImportError);
     ipcRenderer.on('delete-all-data-result', handleDeleteAllResult);
     ipcRenderer.on('delete-all-data-error', handleDeleteAllError);
+    ipcRenderer.on('regenerate-embeddings-result', handleRegenerateEmbeddingsResult);
+    ipcRenderer.on('regenerate-embeddings-error', handleRegenerateEmbeddingsError);
 
     return () => {
       ipcRenderer.removeListener('data-path', handleDataPath);
+      ipcRenderer.removeListener('embedding-model', handleEmbeddingModel);
       ipcRenderer.removeListener('export-data-result', handleExportResult);
       ipcRenderer.removeListener('export-data-error', handleExportError);
       ipcRenderer.removeListener('import-data-result', handleImportResult);
       ipcRenderer.removeListener('import-data-error', handleImportError);
       ipcRenderer.removeListener('delete-all-data-result', handleDeleteAllResult);
       ipcRenderer.removeListener('delete-all-data-error', handleDeleteAllError);
+      ipcRenderer.removeListener('regenerate-embeddings-result', handleRegenerateEmbeddingsResult);
+      ipcRenderer.removeListener('regenerate-embeddings-error', handleRegenerateEmbeddingsError);
     };
   }, []);
 
@@ -127,6 +150,17 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
           alert('Delete cancelled - text did not match.');
         }
       }
+    }
+  };
+
+  const handleRegenerateEmbeddings = () => {
+    const confirmed = confirm(
+      'This will regenerate all embeddings with the current model. This may take some time. Continue?'
+    );
+    
+    if (confirmed) {
+      setIsRegeneratingEmbeddings(true);
+      ipcRenderer.send('regenerate-embeddings');
     }
   };
 
@@ -208,6 +242,29 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                 className="import-button"
               >
                 {isImporting ? 'Importing...' : 'Import from File'}
+              </button>
+            </div>
+          </div>
+
+          <div className="settings-section">
+            <h3>Embedding Model</h3>
+            <p className="settings-description">
+              Current model used for semantic search and embeddings.
+            </p>
+            <div className="model-info">
+              <input 
+                type="text" 
+                value={embeddingModel} 
+                readOnly 
+                className="model-input"
+              />
+              <button 
+                onClick={handleRegenerateEmbeddings}
+                disabled={isRegeneratingEmbeddings}
+                className="regenerate-button"
+                title="Regenerate all embeddings with current model (for testing)"
+              >
+                {isRegeneratingEmbeddings ? 'Regenerating...' : 'Force Regenerate All'}
               </button>
             </div>
           </div>

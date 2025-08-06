@@ -8,7 +8,7 @@ import { app, BrowserWindow, dialog, ipcMain } from 'electron';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-import { initializeDatabase, get_config_path, addItem, searchItems, getRecentItems, deleteItem, getAllItems, exportData, getDataPath, importData, deleteAllData } from './store.js';
+import { initializeDatabase, get_config_path, addItem, searchItems, getRecentItems, deleteItem, getAllItems, exportData, getDataPath, importData, deleteAllData, getCurrentEmbeddingModel, regenerateAllEmbeddings } from './store.js';
 
 // Get the current directory for ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -134,6 +134,27 @@ app.whenReady().then(async () => {
     } catch (error) {
       console.error('Error deleting all data:', error);
       event.sender.send('delete-all-data-error', error.message);
+    }
+  });
+
+  ipcMain.on('get-embedding-model', async (event) => {
+    try {
+      const model = getCurrentEmbeddingModel();
+      event.sender.send('embedding-model', model);
+    } catch (error) {
+      console.error('Error getting embedding model:', error);
+      event.sender.send('embedding-model-error', error.message);
+    }
+  });
+
+  ipcMain.on('regenerate-embeddings', async (event) => {
+    try {
+      const configPath = get_config_path(app.getPath('userData'));
+      const result = await regenerateAllEmbeddings(configPath);
+      event.sender.send('regenerate-embeddings-result', result);
+    } catch (error) {
+      console.error('Error regenerating embeddings:', error);
+      event.sender.send('regenerate-embeddings-error', error.message);
     }
   });
 
