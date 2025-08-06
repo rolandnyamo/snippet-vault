@@ -124,7 +124,7 @@ async function getRecentItems(configPath) {
   const results = await table.query({
     limit: 5,
     orderBy: 'last_accessed_at DESC',
-  });
+  }).execute();
 
   return [...results].map(r => r.toJSON());
 }
