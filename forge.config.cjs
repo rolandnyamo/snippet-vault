@@ -4,7 +4,7 @@ const { FuseV1Options, FuseVersion } = require('@electron/fuses');
 module.exports = {
   packagerConfig: {
     asar: {
-      unpack: '{**/node_modules/@lancedb/**/*,**/*.node,**/node_modules/@tensorflow/**/*}',
+      unpack: '{**/node_modules/@lancedb/**/*,**/*.node}',
     },
     icon: './assets/icons/icon', // Don't include extension - Electron will pick the right one
     name: 'Snippet Vault',

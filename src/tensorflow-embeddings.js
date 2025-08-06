@@ -1,5 +1,5 @@
-// Real TensorFlow.js-based embedding implementation
-import * as tf from '@tensorflow/tfjs-node';
+// Real TensorFlow.js-based embedding implementation (browser-compatible for Electron)
+import * as tf from '@tensorflow/tfjs';
 import * as use from '@tensorflow-models/universal-sentence-encoder';
 
 class TensorFlowEmbeddingPipeline {
@@ -48,8 +48,8 @@ class TensorFlowEmbeddingPipeline {
       // Clean up tensor
       embeddings.dispose();
       
-      // Return as Float32Array (compatible with LanceDB)
-      return new Float32Array(embeddingArray);
+      // Convert to regular array for LanceDB compatibility
+      return Array.from(embeddingArray);
       
     } catch (error) {
       console.error('Error generating embedding:', error);

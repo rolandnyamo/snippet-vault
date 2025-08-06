@@ -82,17 +82,22 @@ export async function initializeDatabase(configPath, dialog, app) {
       db = await lancedb.connect(config.storage_path);
       const tables = await db.tableNames();
       if (!tables.includes('items')) {
-        const schema = new arrow.Schema([
-          new arrow.Field('id', new arrow.Utf8(), false),
-          new arrow.Field('type', new arrow.Utf8(), false),
-          new arrow.Field('payload', new arrow.Utf8(), false),
-          new arrow.Field('description', new arrow.Utf8(), false),
-          new arrow.Field('created_at', new arrow.Utf8(), false),
-          new arrow.Field('last_accessed_at', new arrow.Utf8(), false),
-          new arrow.Field('embedding_model', new arrow.Utf8(), false),
-          new arrow.Field('vector', new arrow.FixedSizeList(384, new arrow.Field('item', new arrow.Float32()))),
-        ]);
-        await db.createEmptyTable('items', schema);
+        // Let LanceDB infer the schema from the first row of data
+        // This is more reliable than manually defining complex schemas
+        const sampleData = [{
+          id: 'sample',
+          type: 'text',
+          payload: 'sample payload',
+          description: 'sample description',
+          created_at: new Date().toISOString(),
+          last_accessed_at: new Date().toISOString(),
+          embedding_model: 'tensorflow/universal-sentence-encoder',
+          vector: new Array(512).fill(0.0), // Sample 512-dimensional vector
+        }];
+        
+        const table = await db.createTable('items', sampleData);
+        // Remove the sample data
+        await table.delete('id = "sample"');
       }
       break; // Success, exit loop
     } catch (err) {
@@ -140,7 +145,7 @@ export async function addItem(item, configPath) {
       description: item.description,
       created_at: new Date().toISOString(),
       last_accessed_at: new Date().toISOString(),
-      embedding_model: 'Xenova/all-MiniLM-L6-v2',
+      embedding_model: 'tensorflow/universal-sentence-encoder',
       vector: embedding,
     }]);
   } catch (error) {
