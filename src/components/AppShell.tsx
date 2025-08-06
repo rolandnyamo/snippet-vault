@@ -230,7 +230,7 @@ const AppShell: React.FC = () => {
             className={`tab ${activeTab === 'all' ? 'active' : ''}`}
             onClick={() => handleTabChange('all')}
           >
-            All
+            All ({allItems.length})
           </button>
           <button className="add-button" onClick={handleAddItem}>
             + New

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Item } from '../types';
 
 interface DetailPanelProps {
@@ -9,6 +9,7 @@ interface DetailPanelProps {
 }
 
 const DetailPanel: React.FC<DetailPanelProps> = ({ item, onEdit, onCopy, searchQuery }) => {
+  const [showCopySuccess, setShowCopySuccess] = useState(false);
   const getTypeLabel = (type: string): string => {
     switch (type) {
       case 'kusto_query': return 'Kusto Query';
@@ -58,7 +59,8 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ item, onEdit, onCopy, searchQ
 
   const handleCopy = () => {
     onCopy(item);
-    // Could show a toast notification here
+    setShowCopySuccess(true);
+    setTimeout(() => setShowCopySuccess(false), 1500);
   };
 
   const handleEdit = () => {
@@ -88,27 +90,31 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ item, onEdit, onCopy, searchQ
       </div>
 
       <div className="detail-content">
+        <div className="edit-section">
+          <button 
+            className="action-button secondary" 
+            onClick={handleEdit}
+          >
+            Edit
+          </button>
+        </div>
+        
         <div className="payload-container">
+          <div className="payload-header">
+            <button 
+              className={`copy-icon-button ${showCopySuccess ? 'success' : ''}`}
+              onClick={handleCopy}
+              title={showCopySuccess ? 'Copied!' : 'Copy to clipboard'}
+            >
+              {showCopySuccess ? '✓' : '�'}
+            </button>
+          </div>
           <pre className="payload-text">
             {searchQuery ? highlightText(item.payload, searchQuery) : item.payload}
           </pre>
         </div>
       </div>
 
-      <div className="detail-actions">
-        <button 
-          className="action-button primary" 
-          onClick={handleCopy}
-        >
-          Copy
-        </button>
-        <button 
-          className="action-button secondary" 
-          onClick={handleEdit}
-        >
-          Edit
-        </button>
-      </div>
     </div>
   );
 };
