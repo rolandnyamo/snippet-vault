@@ -1,32 +1,15 @@
-// Force ONNX backend to be disabled before any imports
-process.env.TRANSFORMERS_BACKEND = 'web';
-process.env.TRANSFORMERS_FORCE_WEB = 'true';
-process.env.ONNX_WEB = 'true';
-process.env.USE_ONNX = 'false';
-
-import { pipeline, env } from '@xenova/transformers';
+// Force TensorFlow.js backend - no more ONNX dependencies!
+import { getEmbeddingPipeline } from './tensorflow-embeddings.js';
 import fs from 'fs';
 import lancedb from '@lancedb/lancedb';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { v4 as uuidv4 } from 'uuid';
-import arrow from 'apache-arrow';
+import * as arrow from 'apache-arrow';
 
 // Get the current directory for ES modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
-// Configure environment for Node.js to use local models only - BEFORE any pipeline creation
-env.allowLocalModels = true;
-env.allowRemoteModels = false;
-env.localModelPath = path.resolve(__dirname, '../models');
-env.cacheDir = path.resolve(__dirname, '../models');
-
-// Aggressively disable ONNX backend
-if (env.backends) {
-    env.backends.onnx = false;
-    env.backends.tfjs = false;
-}
 
 // Simple Headers polyfill for Node.js
 if (!globalThis.Headers) {
@@ -133,53 +116,18 @@ export async function initializeDatabase(configPath, dialog, app) {
 }
 
 /**
- * Singleton pattern to ensure we only load the model once per warm container.
- * The model is large, so loading it on every invocation would be very slow and costly.
+ * Generate embeddings for text using Universal Sentence Encoder
+ * @param {string} text - Text to embed
+ * @returns {Promise<number[]>} Embedding vector
  */
-export class EmbeddingPipeline {
-    static task = 'feature-extraction';
-    // Use just the model name - transformers will look in localModelPath
-    static model = 'Xenova/all-MiniLM-L6-v2';
-    static instance = null;
-
-    static async getInstance() {
-        if (this.instance === null) {
-            console.log("COLD START: Initializing embedding model...");
-            console.log("Local model path:", env.localModelPath);
-            console.log("Model name:", this.model);
-            
-            // The pipeline function will load the model into memory.
-            this.instance = await pipeline(this.task, this.model, {
-                quantized: false, // Use full precision for best quality
-                local_files_only: true // Force local files only
-            });
-            console.log("Model initialized successfully.");
-        }
-        return this.instance;
-    }
-
-    /**
-     * Generate embeddings for a text
-     * @param {string} text - Text to embed
-     * @returns {Promise<number[]>} Embedding vector
-     */
-    static async generateEmbedding(text) {
-        const embedder = await this.getInstance();
-        console.log(`Generating embedding for text: ${text.substring(0, 50)}...`);
-        
-        // Generate the embedding. Use pooling='mean' and normalize=true for the model.
-        const embedding = await embedder(text, { pooling: 'mean', normalize: true });
-        
-        console.log("Embedding generated successfully.");
-        
-        // Return the data array directly
-        return Array.from(embedding.data);
-    }
+async function generateEmbedding(text) {
+    const pipeline = await getEmbeddingPipeline();
+    return await pipeline.generateEmbedding(text);
 }
 
 export async function addItem(item, configPath) {
   try {
-    const embedding = await EmbeddingPipeline.generateEmbedding(item.payload + ' ' + item.description);
+    const embedding = await generateEmbedding(item.payload + ' ' + item.description);
 
     const config = JSON.parse(fs.readFileSync(configPath));
     const db = await lancedb.connect(config.storage_path);
@@ -212,7 +160,7 @@ export async function searchItems(query, configPath) {
   }
 
   try {
-    const queryEmbedding = await EmbeddingPipeline.generateEmbedding(query);
+    const queryEmbedding = await generateEmbedding(query);
 
     // Make search case-insensitive and search both description and payload
     const searchPattern = query.toLowerCase();

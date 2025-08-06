@@ -4,20 +4,23 @@ const { FuseV1Options, FuseVersion } = require('@electron/fuses');
 module.exports = {
   packagerConfig: {
     asar: {
-      unpack: '{**/node_modules/@xenova/transformers/**/*,**/node_modules/@lancedb/**/*,**/*.node,**/models/**/*}',
+      unpack: '{**/node_modules/@lancedb/**/*,**/*.node,**/node_modules/@tensorflow/**/*}',
     },
     icon: './assets/icons/icon', // Don't include extension - Electron will pick the right one
     name: 'Snippet Vault',
     appBundleId: 'com.rolandnyamoga.snippet-vault',
     ignore: [
-      // Ignore only top-level onnxruntime packages
-      /node_modules\/onnxruntime-node($|\/)/,
-      /node_modules\/onnxruntime-web($|\/)/,
-      /node_modules\/onnxruntime-common($|\/)/,
-      // No nested ignores under @xenova/transformers
+      // Don't ignore anything - let all onnxruntime packages be included but unpacked
     ],
   },
   rebuildConfig: {},
+  hooks: {
+    prePackage: async () => {
+      console.log('Running webpack build before packaging...');
+      const { execSync } = require('child_process');
+      execSync('npm run build:full', { stdio: 'inherit' });
+    },
+  },
   makers: [
     {
       name: '@electron-forge/maker-squirrel',
