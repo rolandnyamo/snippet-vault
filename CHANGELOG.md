@@ -1,3 +1,18 @@
+## [1.1.0](https://github.com/rolandnyamo/snippet-vault/compare/v1.0.1...v1.1.0) (2025-08-07)
+
+
+### Features
+
+* **component:** major bug fixes and performance enhancements ([d0fd106](https://github.com/rolandnyamo/snippet-vault/commit/d0fd106ab14f7c3c89a667b8b10311fb800404af))
+* only silicon and msi packages ([5d848f2](https://github.com/rolandnyamo/snippet-vault/commit/5d848f27e61f2bd827f43d2b9224ee82b6e18125))
+
+
+### Bug Fixes
+
+* **ci skipping build packages step:** cI skipping build packages step ([7454ac9](https://github.com/rolandnyamo/snippet-vault/commit/7454ac9975851a8850ba1522adfb8c56eb5739b5))
+* ci workflow changes ([6744e07](https://github.com/rolandnyamo/snippet-vault/commit/6744e070b0946c492d2630b23e53dae481ec4e95))
+* test compatibility fixes ([7806d45](https://github.com/rolandnyamo/snippet-vault/commit/7806d4514cf47d86f90ac566fc5b35f126c50df8))
+
 ## [1.0.1](https://github.com/rolandnyamo/snippet-vault/compare/v1.0.0...v1.0.1) (2025-08-07)
 
 
