@@ -109,6 +109,28 @@ npm run commit
 
 ## Getting Started
 
+### Installation
+
+#### macOS Users
+If you encounter the error **"Snippet Vault" is damaged and can't be opened**, this is due to macOS Gatekeeper restrictions on unsigned applications. To resolve this:
+
+1. **Download the latest release** from the [GitHub Releases page](https://github.com/rolandnyamo/snippet-vault/releases)
+2. **Extract the ZIP file** to your Applications folder or desired location
+3. **Remove the quarantine attribute** by running this command in Terminal:
+   ```bash
+   xattr -d com.apple.quarantine "/path/to/Snippet Vault.app"
+   ```
+   Or if you placed it in Applications:
+   ```bash
+   xattr -d com.apple.quarantine "/Applications/Snippet Vault.app"
+   ```
+4. **Alternative method**: Right-click the app → "Open" → Click "Open" when prompted
+
+This is a one-time setup required for unsigned macOS applications.
+
+#### Windows & Linux Users
+Download and run the installer from the [GitHub Releases page](https://github.com/rolandnyamo/snippet-vault/releases). No additional steps needed.
+
 ### First Launch
 
 When you first launch Snippet Vault, it will automatically create a database in your system's user data directory. All of your data, including the search index and saved items, is stored locally on your computer for complete privacy.
@@ -309,6 +331,11 @@ Currently, the UI supports "Links" and "Kusto Queries", but you can store any te
 │  • snippet_vault.lance/ (vector database files)                 │
 │  • Model cache (TensorFlow.js model files)                      │
 └──────────────────────────────────────────────────────────────────┘
+
+Build Architecture:
+• macOS: x64 native build (no universal binary for compatibility)
+• Windows: x64 build with MSI installer
+• Linux: x64 build with DEB/RPM packages
 
 Data Flow:
 1. User inputs search query or adds new item
