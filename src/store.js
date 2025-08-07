@@ -10,9 +10,17 @@ import * as arrow from 'apache-arrow';
 // Current embedding model identifier
 const CURRENT_EMBEDDING_MODEL = 'tensorflow/universal-sentence-encoder@3.3.0';
 
-// Get the current directory for ES modules
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// Get the current directory for ES modules (lazy initialization for tests)
+let __filename;
+let __dirname;
+
+function initializePaths() {
+  if (!__filename) {
+    __filename = fileURLToPath(import.meta.url);
+    __dirname = path.dirname(__filename);
+  }
+  return { __filename, __dirname };
+}
 
 // Simple Headers polyfill for Node.js
 if (!globalThis.Headers) {
