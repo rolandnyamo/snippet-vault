@@ -239,6 +239,93 @@ If embeddings become corrupted, they can be regenerated from the raw data withou
 
 Currently, the UI supports "Links" and "Kusto Queries", but you can store any text content. The `type` field is flexible and you can use custom types when importing data programmatically.
 
+## Notes
+
+### Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        Snippet Vault App                        │
+├─────────────────────────────────────────────────────────────────┤
+│  Frontend (React)                                               │
+│  ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐    │
+│  │   Search Bar    │ │   Item List     │ │  Detail Panel   │    │
+│  │                 │ │                 │ │                 │    │
+│  │ Real-time       │ │ Recent/All      │ │ View/Edit/Copy  │    │
+│  │ search input    │ │ with highlights │ │ item content    │    │
+│  └─────────────────┘ └─────────────────┘ └─────────────────┘    │
+│           │                    │                    │            │
+│           └────────────────────┼────────────────────┘            │
+│                                │                                 │
+├────────────────────────────────┼─────────────────────────────────┤
+│  Main Process (Electron)       │                                 │
+│  ┌─────────────────────────────▼─────────────────────────────┐   │
+│  │                Store (store.js)                          │   │
+│  │  ┌─────────────────┐ ┌─────────────────┐                │   │
+│  │  │  Search Logic   │ │  Data Manager   │                │   │
+│  │  │                 │ │                 │                │   │
+│  │  │ • Semantic      │ │ • CRUD ops      │                │   │
+│  │  │ • Keyword       │ │ • Export/Import │                │   │
+│  │  │ • Hybrid match  │ │ • Validation    │                │   │
+│  │  └─────────────────┘ └─────────────────┘                │   │
+│  └─────────────────────────────┬─────────────────────────────┘   │
+│                                │                                 │
+├────────────────────────────────┼─────────────────────────────────┤
+│  AI Processing Layer           │                                 │
+│  ┌─────────────────────────────▼─────────────────────────────┐   │
+│  │            TensorFlow.js Engine                           │   │
+│  │  ┌─────────────────────────────────────────────────────┐  │   │
+│  │  │        Universal Sentence Encoder                   │  │   │
+│  │  │        (tensorflow/universal-sentence-encoder)      │  │   │
+│  │  │                                                     │  │   │
+│  │  │  Text Input → 512-dimensional vector embeddings    │  │   │
+│  │  └─────────────────────────────────────────────────────┘  │   │
+│  └─────────────────────────────┬─────────────────────────────┘   │
+│                                │                                 │
+├────────────────────────────────┼─────────────────────────────────┤
+│  Data Storage Layer            │                                 │
+│  ┌─────────────────────────────▼─────────────────────────────┐   │
+│  │                   LanceDB                                 │   │
+│  │  ┌─────────────────────┐ ┌─────────────────────────────┐  │   │
+│  │  │    Raw Data Table   │ │    Embeddings Table         │  │   │
+│  │  │                     │ │                             │  │   │
+│  │  │ • ID                │ │ • ID                        │  │   │
+│  │  │ • Type              │ │ • Vector (512 dimensions)   │  │   │
+│  │  │ • Description       │ │ • Model Version             │  │   │
+│  │  │ • Payload           │ │ • Timestamps                │  │   │
+│  │  │ • Timestamps        │ │                             │  │   │
+│  │  └─────────────────────┘ └─────────────────────────────┘  │   │
+│  └─────────────────────────────┬─────────────────────────────┘   │
+│                                │                                 │
+└────────────────────────────────┼─────────────────────────────────┘
+                                 │
+┌────────────────────────────────▼─────────────────────────────────┐
+│                    Local File System                             │
+│                                                                  │
+│  macOS: ~/Library/Application Support/snippet-vault/database/   │
+│  Windows: %APPDATA%/snippet-vault/database/                     │
+│  Linux: ~/.config/snippet-vault/database/                       │
+│                                                                  │
+│  • snippet_vault.lance/ (vector database files)                 │
+│  • Model cache (TensorFlow.js model files)                      │
+└──────────────────────────────────────────────────────────────────┘
+
+Data Flow:
+1. User inputs search query or adds new item
+2. Frontend sends request to Main Process store
+3. For new items: Text is processed by TensorFlow.js to generate embeddings
+4. Data stored in both Raw Data and Embeddings tables in LanceDB
+5. For searches: Query is embedded and compared against stored vectors
+6. Results ranked by semantic similarity + keyword matching
+7. UI updates with highlighted results in real-time
+
+Privacy & Offline Design:
+• All processing happens locally - no network calls
+• TensorFlow.js runs in browser context for compatibility
+• LanceDB provides efficient vector search without external services
+• Dual-table architecture ensures data recovery if embeddings corrupted
+```
+
 ## License
 
 MIT License - see LICENSE file for details.
