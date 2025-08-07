@@ -1,24 +1,26 @@
 import { jest } from '@jest/globals';
 
-// Mock modules globally
-const mockReadFileSync = jest.fn();
-const mockExistsSync = jest.fn().mockReturnValue(true);
-const mockWriteFileSync = jest.fn();
-const mockMkdirSync = jest.fn();
+// Mock fs 
+const mockFs = {
+  readFileSync: jest.fn(),
+  existsSync: jest.fn().mockReturnValue(true),
+  writeFileSync: jest.fn(),
+  mkdirSync: jest.fn(),
+};
 
-jest.unstable_mockModule('fs', () => ({
-  readFileSync: mockReadFileSync,
-  existsSync: mockExistsSync,
-  writeFileSync: mockWriteFileSync,
-  mkdirSync: mockMkdirSync,
-}));
+jest.doMock('fs', () => mockFs);
 
-const mockConnect = jest.fn();
-jest.unstable_mockModule('@lancedb/lancedb', () => ({
-  default: {
-    connect: mockConnect,
-  }
-}));
+// Mock lancedb - note: this is a default export mock
+const mockDb = { 
+  tableNames: jest.fn().mockResolvedValue(['items_raw', 'items_embeddings']),
+  openTable: jest.fn()
+};
+
+const mockLancedb = {
+  connect: jest.fn().mockResolvedValue(mockDb),
+};
+
+jest.doMock('@lancedb/lancedb', () => mockLancedb);
 
 describe('getRecentItems', () => {
   beforeEach(() => {
@@ -53,25 +55,23 @@ describe('getRecentItems', () => {
     
     const mockEmbeddingTable = {
       query: jest.fn().mockReturnValue({
-        where: jest.fn().mockReturnValue({
-          toArray: jest.fn().mockResolvedValue([{
-            id: 'item1',
-            embedding_model: 'tensorflow/universal-sentence-encoder@3.3.0'
-          }])
-        })
+        where: jest.fn().mockImplementation((whereClause) => ({
+          toArray: jest.fn().mockResolvedValue(
+            whereClause.includes('item1') ? [{
+              id: 'item1',
+              embedding_model: 'tensorflow/universal-sentence-encoder@3.3.0'
+            }] : []
+          )
+        }))
       })
     };
     
-    const mockDb = { 
-      tableNames: jest.fn().mockResolvedValue(['items_raw', 'items_embeddings']),
-      openTable: jest.fn().mockImplementation((tableName) => {
-        if (tableName === 'items_raw') return mockRawTable;
-        if (tableName === 'items_embeddings') return mockEmbeddingTable;
-      })
-    };
+    mockDb.openTable.mockImplementation((tableName) => {
+      if (tableName === 'items_raw') return mockRawTable;
+      if (tableName === 'items_embeddings') return mockEmbeddingTable;
+    });
 
-    mockConnect.mockResolvedValue(mockDb);
-    mockReadFileSync.mockReturnValue(JSON.stringify({ storage_path: '/test/db' }));
+    mockFs.readFileSync.mockReturnValue(JSON.stringify({ storage_path: '/test/db' }));
 
     const { getRecentItems } = await import('../store.js');
     const results = await getRecentItems('/test/config.json');

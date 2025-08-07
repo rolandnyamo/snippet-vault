@@ -1,32 +1,37 @@
 import { jest } from '@jest/globals';
 
-// Mock modules globally
-const mockReadFileSync = jest.fn();
-const mockExistsSync = jest.fn();
-const mockWriteFileSync = jest.fn();
-const mockMkdirSync = jest.fn();
+// Mock fs 
+const mockFs = {
+  readFileSync: jest.fn(),
+  existsSync: jest.fn(),
+  writeFileSync: jest.fn(),
+  mkdirSync: jest.fn(),
+};
 
-jest.unstable_mockModule('fs', () => ({
-  readFileSync: mockReadFileSync,
-  existsSync: mockExistsSync,
-  writeFileSync: mockWriteFileSync,
-  mkdirSync: mockMkdirSync,
-}));
+jest.doMock('fs', () => mockFs);
 
-const mockConnect = jest.fn();
-jest.unstable_mockModule('@lancedb/lancedb', () => ({
-  default: {
-    connect: mockConnect,
-  }
-}));
+// Mock lancedb - note: this is a default export mock
+const mockDb = { 
+  tableNames: jest.fn().mockResolvedValue([]),
+  createTable: jest.fn().mockResolvedValue({
+    delete: jest.fn()
+  }),
+};
 
-jest.unstable_mockModule('apache-arrow', () => ({
+const mockLancedb = {
+  connect: jest.fn().mockResolvedValue(mockDb),
+};
+
+jest.doMock('@lancedb/lancedb', () => mockLancedb);
+
+// Mock apache-arrow
+jest.doMock('apache-arrow', () => ({
   default: {},
 }));
 
 const mockDialog = {
   showOpenDialog: jest.fn(),
-  showMessageBox: jest.fn(),
+  showMessageBox: jest.fn().mockResolvedValue({ response: 0 }), // Mock return value
   showErrorBox: jest.fn(),
 };
 
@@ -41,57 +46,39 @@ describe('store', () => {
   });
 
   it('should create a new config file if one does not exist', async () => {
-    mockExistsSync.mockReturnValue(false);
-    mockConnect.mockResolvedValue({
-      tableNames: jest.fn().mockResolvedValue([]),
-      createTable: jest.fn().mockResolvedValue({
-        delete: jest.fn()
-      }),
-    });
+    mockFs.existsSync.mockReturnValue(false);
 
     const { initializeDatabase, get_config_path } = await import('../store.js');
     
     const configPath = get_config_path(mockApp.getPath('userData'));
     await initializeDatabase(configPath, mockDialog, mockApp);
 
-    expect(mockWriteFileSync).toHaveBeenCalledWith(
+    expect(mockFs.writeFileSync).toHaveBeenCalledWith(
       configPath,
       JSON.stringify({ storage_path: '/tmp/userData/database' }, null, 2)
     );
   });
 
   it('should use an existing config file if one is present', async () => {
-    mockExistsSync.mockReturnValue(true);
-    mockReadFileSync.mockReturnValue(JSON.stringify({ storage_path: '/existing/path' }));
-    mockConnect.mockResolvedValue({
-      tableNames: jest.fn().mockResolvedValue([]),
-      createTable: jest.fn().mockResolvedValue({
-        delete: jest.fn()
-      }),
-    });
+    mockFs.existsSync.mockReturnValue(true);
+    mockFs.readFileSync.mockReturnValue(JSON.stringify({ storage_path: '/existing/path' }));
 
     const { initializeDatabase, get_config_path } = await import('../store.js');
 
     const configPath = get_config_path(mockApp.getPath('userData'));
     await initializeDatabase(configPath, mockDialog, mockApp);
 
-    expect(mockWriteFileSync).not.toHaveBeenCalled();
+    expect(mockFs.writeFileSync).not.toHaveBeenCalled();
   });
 
   it('should create default storage path when none exists', async () => {
-    mockExistsSync.mockReturnValue(false);
-    mockConnect.mockResolvedValue({
-      tableNames: jest.fn().mockResolvedValue([]),
-      createTable: jest.fn().mockResolvedValue({
-        delete: jest.fn()
-      }),
-    });
+    mockFs.existsSync.mockReturnValue(false);
 
     const { initializeDatabase, get_config_path } = await import('../store.js');
     
     const configPath = get_config_path(mockApp.getPath('userData'));
     await initializeDatabase(configPath, mockDialog, mockApp);
 
-    expect(mockMkdirSync).toHaveBeenCalledWith('/tmp/userData/database', { recursive: true });
+    expect(mockFs.mkdirSync).toHaveBeenCalledWith('/tmp/userData/database', { recursive: true });
   });
 });
