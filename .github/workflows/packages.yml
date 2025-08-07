@@ -44,7 +44,7 @@ jobs:
               registry: 'https://npm.pkg.github.com',
               access: 'public'
             };
-            pkg.files = ['dist/**/*', 'out/**/*', 'README.md', 'LICENSE'];
+            pkg.files = ['dist/**/*', 'README.md'];
             require('fs').writeFileSync('package.json', JSON.stringify(pkg, null, 2));
           "
 
