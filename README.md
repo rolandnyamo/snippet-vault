@@ -17,6 +17,13 @@ A lightweight, entirely-offline desktop utility for storing and semantically sea
 
 For developers working on this project:
 
+**Prerequisites:**
+- Node.js 22 or later
+- npm 10 or later
+- Git
+
+**Setup Steps:**
+
 1. **Clone the repository**:
    ```bash
    git clone https://github.com/rolandnyamo/snippet-vault.git
@@ -40,6 +47,7 @@ For developers working on this project:
 
 ### Architecture Notes
 
+- **Node.js 22+**: Built and tested on Node.js 22 for latest language features and performance
 - **Semantic Search**: Uses TensorFlow.js Universal Sentence Encoder (tensorflow/universal-sentence-encoder@3.3.0) for 512-dimensional embeddings
 - **Browser-Compatible**: Uses TensorFlow.js web backend to avoid native dependencies
 - **ES Modules**: Modern module system for better compatibility

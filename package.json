@@ -2,7 +2,7 @@
   "name": "snippet-vault",
   "productName": "Snippet Vault",
   "version": "1.0.0",
-  "description": "My Electron application description",
+  "description": "A lightweight, entirely-offline desktop utility for storing and semantically searching code snippets, Kusto queries, and URLs using TensorFlow.js",
   "main": "src/index.js",
   "type": "module",
   "scripts": {
@@ -13,13 +13,24 @@
     "prebuild:full": "npm run download-models",
     "start": "npm run build && electron-forge start",
     "package": "electron-forge package",
+    "package:all": "npm run package:mac && npm run package:win && npm run package:linux",
+    "package:mac": "electron-forge package --platform=darwin --arch=universal",
+    "package:win": "electron-forge package --platform=win32 --arch=x64",
+    "package:linux": "electron-forge package --platform=linux --arch=x64",
     "make": "electron-forge make",
-    "make:mac": "electron-forge make --platform=darwin",
-    "make:win": "electron-forge make --platform=win32",
-    "make:linux": "electron-forge make --platform=linux",
+    "make:all": "npm run make:mac && npm run make:win && npm run make:linux",
+    "make:mac": "electron-forge make --platform=darwin --arch=universal",
+    "make:win": "electron-forge make --platform=win32 --arch=x64",
+    "make:linux": "electron-forge make --platform=linux --arch=x64",
     "publish": "electron-forge publish",
     "lint": "echo \"No linting configured\"",
-    "test": "npx jest"
+    "test": "npx jest",
+    "version:patch": "npm version patch",
+    "version:minor": "npm version minor",
+    "version:major": "npm version major",
+    "release:patch": "npm run version:patch && git push && git push --tags",
+    "release:minor": "npm run version:minor && git push && git push --tags",
+    "release:major": "npm run version:major && git push && git push --tags"
   },
   "keywords": [
     "kusto",
@@ -37,6 +48,10 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/rolandnyamo/snippet-vault.git"
+  },
+  "engines": {
+    "node": ">=22.0.0",
+    "npm": ">=10.0.0"
   },
   "dependencies": {
     "@babel/preset-react": "^7.27.1",
@@ -65,10 +80,12 @@
     "@electron/fuses": "^1.8.0",
     "@types/node": "^24.2.0",
     "babel-jest": "^30.0.5",
+    "babel-plugin-transform-import-meta": "^2.3.3",
     "cross-env": "^10.0.0",
     "css-loader": "^7.1.2",
     "electron": "37.2.5",
     "html-webpack-plugin": "^5.6.3",
+    "jest": "^30.0.5",
     "style-loader": "^4.0.0",
     "ts-loader": "^9.5.2",
     "typescript": "^5.9.2",
