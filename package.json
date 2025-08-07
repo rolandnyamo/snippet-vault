@@ -1,7 +1,7 @@
 {
   "name": "snippet-vault",
   "productName": "Snippet Vault",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A lightweight, entirely-offline desktop utility for storing and semantically searching code snippets, Kusto queries, and URLs using TensorFlow.js",
   "main": "src/index.js",
   "type": "module",

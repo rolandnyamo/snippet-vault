@@ -1,3 +1,10 @@
+## [1.0.1](https://github.com/rolandnyamo/snippet-vault/compare/v1.0.0...v1.0.1) (2025-08-07)
+
+
+### Bug Fixes
+
+* package execution errors for mac ([cc5f954](https://github.com/rolandnyamo/snippet-vault/commit/cc5f9542ca441c3b74ab0ee9fe72a2bc54d26c1e))
+
 ## 1.0.0 (2025-08-07)
 
 
