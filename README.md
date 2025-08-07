@@ -109,6 +109,28 @@ npm run commit
 
 ## Getting Started
 
+### Installation
+
+#### macOS Users
+If you encounter the error **"Snippet Vault" is damaged and can't be opened**, this is due to macOS Gatekeeper restrictions on unsigned applications. To resolve this:
+
+1. **Download the latest release** from the [GitHub Releases page](https://github.com/rolandnyamo/snippet-vault/releases)
+2. **Extract the ZIP file** to your Applications folder or desired location
+3. **Remove the quarantine attribute** by running this command in Terminal:
+   ```bash
+   xattr -d com.apple.quarantine "/path/to/Snippet Vault.app"
+   ```
+   Or if you placed it in Applications:
+   ```bash
+   xattr -d com.apple.quarantine "/Applications/Snippet Vault.app"
+   ```
+4. **Alternative method**: Right-click the app → "Open" → Click "Open" when prompted
+
+This is a one-time setup required for unsigned macOS applications.
+
+#### Windows & Linux Users
+Download and run the installer from the [GitHub Releases page](https://github.com/rolandnyamo/snippet-vault/releases). No additional steps needed.
+
 ### First Launch
 
 When you first launch Snippet Vault, it will automatically create a database in your system's user data directory. All of your data, including the search index and saved items, is stored locally on your computer for complete privacy.
@@ -238,6 +260,98 @@ If embeddings become corrupted, they can be regenerated from the raw data withou
 ### Can I add custom item types?
 
 Currently, the UI supports "Links" and "Kusto Queries", but you can store any text content. The `type` field is flexible and you can use custom types when importing data programmatically.
+
+## Notes
+
+### Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        Snippet Vault App                        │
+├─────────────────────────────────────────────────────────────────┤
+│  Frontend (React)                                               │
+│  ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐    │
+│  │   Search Bar    │ │   Item List     │ │  Detail Panel   │    │
+│  │                 │ │                 │ │                 │    │
+│  │ Real-time       │ │ Recent/All      │ │ View/Edit/Copy  │    │
+│  │ search input    │ │ with highlights │ │ item content    │    │
+│  └─────────────────┘ └─────────────────┘ └─────────────────┘    │
+│           │                    │                    │            │
+│           └────────────────────┼────────────────────┘            │
+│                                │                                 │
+├────────────────────────────────┼─────────────────────────────────┤
+│  Main Process (Electron)       │                                 │
+│  ┌─────────────────────────────▼─────────────────────────────┐   │
+│  │                Store (store.js)                          │   │
+│  │  ┌─────────────────┐ ┌─────────────────┐                │   │
+│  │  │  Search Logic   │ │  Data Manager   │                │   │
+│  │  │                 │ │                 │                │   │
+│  │  │ • Semantic      │ │ • CRUD ops      │                │   │
+│  │  │ • Keyword       │ │ • Export/Import │                │   │
+│  │  │ • Hybrid match  │ │ • Validation    │                │   │
+│  │  └─────────────────┘ └─────────────────┘                │   │
+│  └─────────────────────────────┬─────────────────────────────┘   │
+│                                │                                 │
+├────────────────────────────────┼─────────────────────────────────┤
+│  AI Processing Layer           │                                 │
+│  ┌─────────────────────────────▼─────────────────────────────┐   │
+│  │            TensorFlow.js Engine                           │   │
+│  │  ┌─────────────────────────────────────────────────────┐  │   │
+│  │  │        Universal Sentence Encoder                   │  │   │
+│  │  │        (tensorflow/universal-sentence-encoder)      │  │   │
+│  │  │                                                     │  │   │
+│  │  │  Text Input → 512-dimensional vector embeddings    │  │   │
+│  │  └─────────────────────────────────────────────────────┘  │   │
+│  └─────────────────────────────┬─────────────────────────────┘   │
+│                                │                                 │
+├────────────────────────────────┼─────────────────────────────────┤
+│  Data Storage Layer            │                                 │
+│  ┌─────────────────────────────▼─────────────────────────────┐   │
+│  │                   LanceDB                                 │   │
+│  │  ┌─────────────────────┐ ┌─────────────────────────────┐  │   │
+│  │  │    Raw Data Table   │ │    Embeddings Table         │  │   │
+│  │  │                     │ │                             │  │   │
+│  │  │ • ID                │ │ • ID                        │  │   │
+│  │  │ • Type              │ │ • Vector (512 dimensions)   │  │   │
+│  │  │ • Description       │ │ • Model Version             │  │   │
+│  │  │ • Payload           │ │ • Timestamps                │  │   │
+│  │  │ • Timestamps        │ │                             │  │   │
+│  │  └─────────────────────┘ └─────────────────────────────┘  │   │
+│  └─────────────────────────────┬─────────────────────────────┘   │
+│                                │                                 │
+└────────────────────────────────┼─────────────────────────────────┘
+                                 │
+┌────────────────────────────────▼─────────────────────────────────┐
+│                    Local File System                             │
+│                                                                  │
+│  macOS: ~/Library/Application Support/snippet-vault/database/   │
+│  Windows: %APPDATA%/snippet-vault/database/                     │
+│  Linux: ~/.config/snippet-vault/database/                       │
+│                                                                  │
+│  • snippet_vault.lance/ (vector database files)                 │
+│  • Model cache (TensorFlow.js model files)                      │
+└──────────────────────────────────────────────────────────────────┘
+
+Build Architecture:
+• macOS: x64 native build (no universal binary for compatibility)
+• Windows: x64 build with MSI installer
+• Linux: x64 build with DEB/RPM packages
+
+Data Flow:
+1. User inputs search query or adds new item
+2. Frontend sends request to Main Process store
+3. For new items: Text is processed by TensorFlow.js to generate embeddings
+4. Data stored in both Raw Data and Embeddings tables in LanceDB
+5. For searches: Query is embedded and compared against stored vectors
+6. Results ranked by semantic similarity + keyword matching
+7. UI updates with highlighted results in real-time
+
+Privacy & Offline Design:
+• All processing happens locally - no network calls
+• TensorFlow.js runs in browser context for compatibility
+• LanceDB provides efficient vector search without external services
+• Dual-table architecture ensures data recovery if embeddings corrupted
+```
 
 ## License
 

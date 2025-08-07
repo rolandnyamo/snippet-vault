@@ -10,6 +10,9 @@ module.exports = {
     name: 'Snippet Vault',
     executableName: 'snippet-vault',
     appBundleId: 'com.rolandnyamoga.snippet-vault',
+    // Disable code signing for CI builds to avoid "damaged" error
+    // Enable this later when proper certificates are configured
+    osxSign: false,
     ignore: [
       // Don't ignore anything - let all onnxruntime packages be included but unpacked
     ],

@@ -47,9 +47,9 @@ jobs:
         os: [macos-latest, ubuntu-latest, windows-latest]
         include:
           - os: macos-latest
-            artifact_name: 'snippet-vault-macos-universal'
-            artifact_path: 'out/make/zip/darwin/universal/*.zip'
-            asset_name: 'snippet-vault-macos-universal.zip'
+            artifact_name: 'snippet-vault-macos-x64'
+            artifact_path: 'out/make/zip/darwin/x64/*.zip'
+            asset_name: 'snippet-vault-macos-x64.zip'
             content_type: 'application/zip'
           - os: ubuntu-latest
             artifact_name: 'snippet-vault-linux-x64'
@@ -84,6 +84,8 @@ jobs:
       run: npm run make
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # Disable code signing for CI builds
+        CSC_IDENTITY_AUTO_DISCOVERY: false
 
     - name: Get release upload URL
       id: get_release
