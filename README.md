@@ -4,14 +4,19 @@ A lightweight, entirely-offline desktop utility for storing and semantically sea
 
 ## Features
 
-- 🔍 **Intelligent Search**: Hybrid semantic + keyword search using TensorFlow.js Universal Sentence Encoder
+- 🔍 **Dual Search Engine**: Choose between Fast (built-in TF-IDF) or Smart (AI Universal Sentence Encoder) models
+- ⚡ **Instant Startup**: Fast model provides immediate functionality, Smart model downloads on-demand (~20MB)
 - 🔒 **100% Offline**: No data ever leaves your machine - all processing happens locally
-- 📁 **Organized Storage**: Recent and All views with item count display
-- 🗑️ **Item Management**: Add, edit, delete individual items or clear all data
-- 📤 **Export/Import**: Backup and restore your data in JSON or CSV format
-- 🔄 **Model Versioning**: Automatic embedding regeneration when models are updated
-- 💾 **Reliable Backup**: Dual-table architecture preserves raw data separately from embeddings
-- 🎯 **Search Highlighting**: Visual highlighting of search terms in results
+- 🧠 **Model Selection**: Runtime switching between search engines with preference persistence
+- 📁 **Smart Organization**: Recent and All views with real-time item count display
+- ✏️ **Full CRUD Operations**: Add, edit, delete individual items with confirmation dialogs
+- 🗑️ **Safe Data Management**: Custom confirmation modals for destructive operations
+- 📤 **Advanced Import/Export**: JSON/CSV support with real-time progress tracking
+- 📋 **Copy Functionality**: One-click copying of file paths and item content
+- 🔄 **Intelligent Model Versioning**: Automatic embedding regeneration with corruption recovery
+- 💾 **Robust Architecture**: Dual-table design preserves raw data separately from embeddings
+- 🎯 **Enhanced Search**: Real-time highlighting, hybrid semantic + keyword matching
+- 🚨 **Error Recovery**: Database corruption detection with automatic rebuilding
 
 ## Development Setup
 
@@ -48,11 +53,14 @@ For developers working on this project:
 ### Architecture Notes
 
 - **Node.js 22+**: Built and tested on Node.js 22 for latest language features and performance
-- **Semantic Search**: Uses TensorFlow.js Universal Sentence Encoder (tensorflow/universal-sentence-encoder@3.3.0) for 512-dimensional embeddings
-- **Browser-Compatible**: Uses TensorFlow.js web backend to avoid native dependencies
-- **ES Modules**: Modern module system for better compatibility
+- **Dual Embedding System**: Fast model (built-in TF-IDF 256-dim) + Smart model (TensorFlow.js Universal Sentence Encoder 512-dim)
+- **Runtime Model Selection**: Users choose search engine on first launch or anytime in Settings
+- **Dynamic Downloads**: TensorFlow model downloads only when selected (~20MB one-time download)
+- **Browser-Compatible**: TensorFlow.js web backend avoids native dependencies
+- **Modern Modules**: ES modules throughout for better compatibility and tree-shaking
 - **Vector Database**: LanceDB for efficient vector storage and similarity search
-- **Dual Storage**: Separate raw data and embeddings tables for backup resilience
+- **Nuclear Rebuild System**: Complete database reconstruction with corruption recovery
+- **Enhanced IPC**: Comprehensive error handling and progress tracking for all operations
 
 ### Development Workflow
 
@@ -137,42 +145,63 @@ Download and run the installer from the [GitHub Releases page](https://github.co
 - Linux: ~25-35MB (DEB/RPM, includes both search engines)
 
 **Search Engine Options:**
-Snippet Vault offers two search engines you can choose from in Settings:
+Snippet Vault offers two search engines you can choose from:
 
-1. **⚡ Fast Model (Built-in)**
-   - Instant startup, no downloads
-   - Good for basic keyword and simple semantic matching
-   - Perfect for quick searches and simple queries
-   - Size: < 1KB (built into the app)
+1. **⚡ Fast Model (Built-in, Default)**
+   - **Instant startup**: No downloads, immediately available
+   - **Lightweight**: Built-in TF-IDF algorithm with 256-dimensional embeddings
+   - **Good performance**: Effective keyword and basic semantic matching
+   - **Perfect for**: Quick searches, simple queries, immediate productivity
+   - **Size**: < 1KB (built into the app)
 
-2. **🧠 Smart Model (AI Download)**
-   - Advanced Google Universal Sentence Encoder
-   - Downloads ~20MB on first use (one-time only)
-   - Best semantic understanding and context awareness
-   - Handles complex queries and multi-language content
+2. **🧠 Smart Model (AI-Powered)**
+   - **Advanced AI**: Google's Universal Sentence Encoder
+   - **One-time download**: ~20MB download on first selection
+   - **Superior understanding**: 512-dimensional embeddings with deep semantic comprehension
+   - **Best for**: Complex queries, multi-language content, nuanced search
+   - **Context awareness**: Understands relationships and meaning beyond keywords
 
-**First Launch Model Selection:**
-On first launch, Snippet Vault starts with the Fast Model for instant usability. You can switch to the Smart Model anytime in Settings → "Choose Model" for enhanced search capabilities.
+**Model Selection:**
+- **First Launch**: Starts with Fast Model for instant usability
+- **Runtime Switching**: Change models anytime in Settings → "Choose Model"
+- **Preference Persistence**: Your choice is remembered across app restarts
+- **Progressive Enhancement**: Start fast, upgrade to smart when needed
 
-### First Launch
+**Dynamic Model Loading:**
+- Smart model downloads automatically when first selected
+- Progress tracking shows download status in real-time
+- Once downloaded, switching between models is instant
+- Downloaded models are cached locally for offline use
 
-When you first launch Snippet Vault, it will automatically create a database in your system's user data directory. All of your data, including the search index and saved items, is stored locally on your computer for complete privacy.
+### First Launch & Model Selection
+
+When you first launch Snippet Vault, you'll see a model selection screen:
+
+1. **Choose Your Search Engine**: Select between Fast (instant) or Smart (AI-powered) models
+2. **Automatic Setup**: Your choice determines the initial search capabilities
+3. **No Lock-in**: You can change models anytime later in Settings
+4. **Smart Downloads**: If you choose Smart model, it downloads automatically with progress tracking
+
+The app then creates a database in your system's user data directory, ensuring all data stays local.
 
 ### Adding Items
 
-Click the **"+ New"** button to add items to your vault. You can store:
+Click the **"+ New"** button or use the **"Smart Add"** feature to add items:
 
 - **Links**: Save URLs with descriptions for later reference
-- **Kusto Queries**: Store KQL queries with descriptions for reuse
-- **Code Snippets**: Any text-based content you want to search semantically
+- **Kusto Queries**: Store KQL queries with descriptions for reuse  
+- **Code Snippets**: Any text-based content you want to search
+- **Smart Add**: AI-powered categorization automatically detects item type and suggests descriptions
 
-When you save an item, Snippet Vault automatically generates a semantic embedding using the Universal Sentence Encoder. This enables intelligent search based on meaning, not just keyword matching.
+When you save an item, Snippet Vault generates embeddings using your selected model (Fast or Smart). This enables intelligent search based on meaning and context.
 
 ### Browsing Your Items
 
-- **Recent Tab**: Shows your 5 most recently accessed items
-- **All Tab**: Displays all items with total count, sorted by creation date
+- **Recent Tab**: Shows your 5 most recently accessed items with timestamps
+- **All Tab**: Displays all items with live count updates, sorted by creation date
+- **Real-time Updates**: Counts and listings update immediately after any changes
 - **Search Highlighting**: Matched terms are highlighted in yellow in both list and detail views
+- **Smart Navigation**: Recently accessed items automatically move to top of Recent tab
 
 ### Searching for Items
 
@@ -184,43 +213,71 @@ Type in the search box to perform intelligent hybrid search:
 
 ### Managing Items
 
-**View & Copy**: Click any item to view details with a copy button in the upper right corner
+**View & Copy**: Click any item to view details with copy buttons for both content and file paths
 
-**Edit Items**: Click the "Edit" button in the detail view to modify descriptions or content
+**Edit Items**: Click the "Edit" button in the detail view to modify descriptions or content with auto-save
 
-**Delete Items**: Hover over items in the list to see the delete (🗑️) button, or use the delete button in the edit modal
+**Delete Items**: 
+- Hover over items in the list to see the delete (🗑️) button
+- Use the delete button in the detail view for individual items  
+- Professional confirmation dialogs prevent accidental deletions
 
 ### Data Management
 
 Access advanced features through the **Settings** button (⚙︎):
 
 #### Export Data
-- **JSON Format**: Complete structured export of all items
-- **CSV Format**: Spreadsheet-compatible export for analysis
-- **Automatic Download**: Files saved to your Downloads folder
+- **JSON Format**: Complete structured export of all items with metadata
+- **CSV Format**: Spreadsheet-compatible export for analysis and external tools
+- **Automatic Download**: Files saved to your Downloads folder with timestamps
 
 #### Import Data
+- **Progressive Import**: Real-time progress tracking with item count and percentage
 - **Append Mode**: Imports add to existing data without replacement
-- **Format Support**: JSON and CSV file imports
-- **Validation**: Ensures required fields are present before import
+- **Format Support**: JSON and CSV file imports with validation
+- **Error Recovery**: Detailed error messages for invalid data with line numbers
+- **Post-Import Updates**: Item counts refresh automatically after successful import
 
-#### Model Information
-- **Current Model**: View the embedding model in use
-- **Version Tracking**: Each embedding tracks its model version
-- **Test Regeneration**: Force regenerate all embeddings for testing
+#### Model Management
+- **Current Model Display**: Shows active search engine (Fast/Smart) with details
+- **Runtime Switching**: Change between Fast and Smart models instantly
+- **Download Management**: Smart model downloads with progress tracking
+- **Version Tracking**: Each embedding tracks its model version for consistency
+- **Performance Testing**: Test current model performance with sample queries
+
+#### Advanced Operations
+- **Regenerate Embeddings**: Force regenerate all embeddings with current model
+- **Database Reset**: Complete database reconstruction ("Nuclear Rebuild")
+- **Corruption Recovery**: Automatic detection and recovery from database corruption
+- **Path Management**: View and access database location with "Show in Folder"
 
 #### Danger Zone
-- **Delete All Data**: Complete data wipe with triple confirmation
-- **Backup Reminder**: Always export your data before using this option
+- **Delete All Data**: Complete data wipe requiring "delete" text confirmation
+- **Custom Confirmation**: Professional modal dialogs replace browser prompts
+- **Triple Safety**: Multiple confirmations prevent accidental data loss
+- **Backup Reminders**: Clear warnings to export data before destructive operations
 
 ### Model Updates & Versioning
 
-Snippet Vault automatically handles model updates:
+Snippet Vault's dual embedding architecture handles model updates intelligently:
 
-1. **Version Detection**: Each embedding tracks its model version
-2. **Auto-Regeneration**: When opening items created with older models, embeddings are automatically updated
-3. **Seamless Migration**: Raw data is preserved, only embeddings are regenerated
-4. **No Data Loss**: Original content is always maintained in the backup table
+#### Automatic Model Management
+1. **Version Detection**: Each embedding tracks its model version and type (Fast/Smart)
+2. **Smart Migration**: When switching models, embeddings regenerate automatically in background
+3. **Seamless Updates**: Model updates trigger automatic re-embedding with progress tracking
+4. **Zero Data Loss**: Raw data is always preserved during model transitions
+
+#### Model Switching Workflow
+1. **Runtime Selection**: Choose Fast or Smart model anytime in Settings
+2. **Progress Tracking**: Visual progress bars for model downloads and embedding generation
+3. **Background Processing**: Embeddings regenerate while you continue working
+4. **Instant Availability**: Switch models immediately, optimization happens in background
+
+#### Corruption Recovery
+- **Auto-Detection**: Identifies corrupted embeddings and missing model data
+- **Nuclear Rebuild**: Complete database reconstruction from raw data when needed
+- **Recovery Logging**: Detailed recovery process tracking for transparency
+- **Data Integrity**: Dual-table architecture ensures raw data survival through any corruption
 
 ## FAQ
 
@@ -249,9 +306,23 @@ For example, searching for "database connection" might find a snippet about "SQL
 - ✅ **Local Database**: All storage is local LanceDB files on your computer
 - ✅ **No Telemetry**: No usage tracking or analytics
 
-### How does the AI search work?
+### How does the dual search system work?
 
-Snippet Vault uses Google's Universal Sentence Encoder, a machine learning model that converts text into mathematical vectors (embeddings) that represent meaning. When you search, your query is converted to the same format and compared against stored embeddings to find semantically similar content.
+Snippet Vault offers two complementary search approaches:
+
+**Fast Model (TF-IDF):**
+- Built-in algorithm similar to traditional search engines
+- Creates 256-dimensional vectors from term frequency analysis
+- Excellent for exact matches and keyword-based searches
+- Instant startup with no downloads required
+
+**Smart Model (Universal Sentence Encoder):**
+- Google's advanced neural network model for understanding text meaning
+- Generates 512-dimensional embeddings that capture semantic relationships
+- Finds content based on meaning, not just keywords
+- Example: Searching "database connection" finds "SQL server setup" because they're semantically related
+
+Both models run completely offline for maximum privacy. You can switch between them anytime based on your needs.
 
 ### Can I backup my data?
 
@@ -263,7 +334,14 @@ Your data files remain in the user data directory and won't be deleted. If you r
 
 ### Can I use this on multiple computers?
 
-Each installation maintains its own local database. To sync data between computers, export from one machine and import to another. There's no automatic synchronization to maintain privacy and offline operation.
+Each installation maintains its own local database. To sync data between computers:
+
+1. **Export**: Use Settings → Export Data to create a backup file
+2. **Transfer**: Move the JSON/CSV file to your other computer
+3. **Import**: Use Settings → Import Data with real-time progress tracking
+4. **Model Sync**: Choose the same search model on both computers for consistency
+
+There's no automatic synchronization to maintain privacy and offline operation, but the import/export process is streamlined with progress feedback.
 
 ### What file formats can I import?
 
@@ -274,11 +352,23 @@ Required fields for import: `type`, `description`, `payload`
 
 ### How do I recover if something goes wrong?
 
-Snippet Vault maintains dual storage:
-1. **Raw Table**: Clean backup of your original content
-2. **Embeddings Table**: AI-generated vectors for search
+Snippet Vault has multiple recovery mechanisms:
 
-If embeddings become corrupted, they can be regenerated from the raw data without losing content. Always export your data before major operations like "Delete All Data".
+**Database Corruption:**
+- **Auto-Detection**: Identifies corruption issues automatically
+- **Nuclear Rebuild**: Complete database reconstruction from raw data
+- **Progress Tracking**: Visual feedback during recovery process
+- **Zero Data Loss**: Raw content always preserved in backup table
+
+**Model Issues:**
+- **Model Switching**: Try switching between Fast and Smart models
+- **Re-download**: Smart model can be re-downloaded if corrupted
+- **Embedding Regeneration**: Force regenerate all embeddings from Settings
+
+**Data Recovery:**
+- **Export First**: Always export your data before major operations
+- **Dual Storage**: Raw data and embeddings stored separately for redundancy
+- **Import Recovery**: Restore from previous exports with progress tracking
 
 ### Can I add custom item types?
 
@@ -370,17 +460,26 @@ Data Flow:
 7. UI updates with highlighted results in real-time
 
 Dual Embedding Architecture:
-• Fast Model: Built-in TF-IDF style embeddings for instant startup
-• Smart Model: TensorFlow.js Universal Sentence Encoder for advanced AI search
+• Fast Model: Built-in TF-IDF style embeddings for instant startup (256-dimensional)
+• Smart Model: TensorFlow.js Universal Sentence Encoder for advanced AI search (512-dimensional)
 • Runtime Selection: Users choose model type in Settings with instant switching
-• Dynamic Loading: TensorFlow model downloads only when selected (~20MB)
+• Dynamic Loading: TensorFlow model downloads only when selected (~20MB one-time)
 • Preference Persistence: Model choice saved locally and restored on restart
+• Background Optimization: Embedding generation happens while you continue working
+
+Enhanced Data Management:
+• Progressive Import: Real-time progress tracking for large data imports
+• Custom Confirmations: Professional modal dialogs for all destructive operations
+• Copy Functionality: File path and content copying with one-click access
+• Auto-Save: Changes saved immediately with visual feedback
+• Error Recovery: Database corruption detection with nuclear rebuild capability
 
 Privacy & Offline Design:
-• All processing happens locally - no network calls
-• Both models run entirely offline for maximum privacy
+• All processing happens locally - no network calls except for optional model downloads
+• Both models run entirely offline after initial setup for maximum privacy
 • LanceDB provides efficient vector search without external services
 • Dual-table architecture ensures data recovery if embeddings corrupted
+• Model downloads cached locally for complete offline operation
 ```
 
 ## License
