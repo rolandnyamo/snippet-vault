@@ -6,11 +6,12 @@ const mockFs = {
   existsSync: jest.fn().mockReturnValue(true),
   writeFileSync: jest.fn(),
   mkdirSync: jest.fn(),
+  rmSync: jest.fn(), // Add rmSync for nuclear rebuild
 };
 
 jest.doMock('fs', () => mockFs);
 
-// Mock lancedb - note: this is a default export mock
+// Mock lancedb 
 const mockDb = { 
   openTable: jest.fn()
 };
@@ -21,18 +22,23 @@ const mockLancedb = {
 
 jest.doMock('@lancedb/lancedb', () => mockLancedb);
 
-// Mock TensorFlow.js embeddings  
-const mockEmbedding = {
-  data: jest.fn().mockResolvedValue(new Float32Array([0.1, 0.2, 0.3, 0.4, 0.5])),
-  dispose: jest.fn(),
+// Mock the hybrid embedding system
+const mockEmbeddingManager = {
+  initialize: jest.fn().mockResolvedValue(),
+  generateEmbedding: jest.fn().mockResolvedValue([0.1, 0.2, 0.3, 0.4, 0.5]),
+  getCurrentModelType: jest.fn().mockReturnValue('lightweight'),
+  getCurrentDimensions: jest.fn().mockReturnValue(256),
+  isInitialized: jest.fn().mockReturnValue(true),
+  setModelType: jest.fn().mockResolvedValue(),
+  canLoadTensorFlow: jest.fn().mockResolvedValue(false),
 };
 
-const mockModel = {
-  embed: jest.fn().mockResolvedValue(mockEmbedding),
-};
-
-jest.doMock('@tensorflow-models/universal-sentence-encoder', () => ({
-  load: jest.fn().mockResolvedValue(mockModel),
+jest.doMock('../hybrid-embeddings.js', () => ({
+  embeddingManager: mockEmbeddingManager,
+  EMBEDDING_MODELS: {
+    LIGHTWEIGHT: 'lightweight',
+    TENSORFLOW: 'tensorflow'
+  }
 }));
 
 // Mock uuid
@@ -46,12 +52,20 @@ describe('addItem', () => {
   });
 
   it('should add an item to the database', async () => {
+    const mockQuery = {
+      limit: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      toArray: jest.fn().mockResolvedValue([])
+    };
+    
     const mockRawTable = {
       add: jest.fn(),
+      query: jest.fn().mockReturnValue(mockQuery),
     };
     
     const mockEmbeddingTable = {
       add: jest.fn(),
+      query: jest.fn().mockReturnValue(mockQuery),
     };
     
     mockDb.openTable.mockImplementation((tableName) => {
@@ -82,12 +96,12 @@ describe('addItem', () => {
       }),
     ]);
     
-    // Check that embedding table was called
+    // Check that embedding table was called with lightweight model
     expect(mockEmbeddingTable.add).toHaveBeenCalledWith([
       expect.objectContaining({
         id: 'test-uuid-123',
-        embedding_model: 'tensorflow/universal-sentence-encoder@3.3.0',
-        vector: expect.any(Array),
+        embedding_model: 'lightweight-embeddings@1.0.0',
+        vector: [0.1, 0.2, 0.3, 0.4, 0.5],
         created_at: expect.any(String),
       }),
     ]);

@@ -22,6 +22,25 @@ const mockLancedb = {
 
 jest.doMock('@lancedb/lancedb', () => mockLancedb);
 
+// Mock the hybrid embedding system
+const mockEmbeddingManager = {
+  initialize: jest.fn().mockResolvedValue(),
+  generateEmbedding: jest.fn().mockResolvedValue([0.1, 0.2, 0.3, 0.4, 0.5]),
+  getCurrentModelType: jest.fn().mockReturnValue('lightweight'),
+  getCurrentDimensions: jest.fn().mockReturnValue(256),
+  isInitialized: jest.fn().mockReturnValue(true),
+  setModelType: jest.fn().mockResolvedValue(),
+  canLoadTensorFlow: jest.fn().mockResolvedValue(false),
+};
+
+jest.doMock('../hybrid-embeddings.js', () => ({
+  embeddingManager: mockEmbeddingManager,
+  EMBEDDING_MODELS: {
+    LIGHTWEIGHT: 'lightweight',
+    TENSORFLOW: 'tensorflow'
+  }
+}));
+
 describe('getRecentItems', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -53,16 +72,18 @@ describe('getRecentItems', () => {
       query: jest.fn().mockReturnValue(mockQueryResult),
     };
     
+    // Mock embedding queries to return current model embeddings (no regeneration needed)
     const mockEmbeddingTable = {
       query: jest.fn().mockReturnValue({
-        where: jest.fn().mockImplementation((whereClause) => ({
-          toArray: jest.fn().mockResolvedValue(
-            whereClause.includes('item1') ? [{
-              id: 'item1',
-              embedding_model: 'tensorflow/universal-sentence-encoder@3.3.0'
-            }] : []
-          )
-        }))
+        where: jest.fn().mockReturnThis(),
+        toArray: jest.fn().mockImplementation(() => {
+          // Return embeddings that match current model so no regeneration is triggered
+          return Promise.resolve([{
+            id: 'item1',
+            embedding_model: 'lightweight-embeddings@1.0.0',
+            vector: new Array(256).fill(0.1),
+          }]);
+        })
       })
     };
     
@@ -84,7 +105,7 @@ describe('getRecentItems', () => {
       payload: 'payload1',
       type: 'text',
       created_at: '2024-01-01T00:00:00.000Z',
-      embedding_model: 'tensorflow/universal-sentence-encoder@3.3.0'
+      embedding_model: 'lightweight-embeddings@1.0.0'
     });
     expect(results[1]).toEqual({
       id: 'item2',
@@ -93,7 +114,7 @@ describe('getRecentItems', () => {
       payload: 'payload2',
       type: 'text',
       created_at: '2024-01-01T00:00:00.000Z',
-      embedding_model: 'unknown'
+      embedding_model: 'lightweight-embeddings@1.0.0'
     });
   });
 });

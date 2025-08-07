@@ -5,8 +5,21 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 // Get current directory for preferences file
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// Handle both ES modules and test environment
+let __filename, __dirname;
+try {
+  // Check if we're in a proper ES module environment
+  if (typeof import.meta !== 'undefined' && import.meta.url) {
+    __filename = fileURLToPath(import.meta.url);
+    __dirname = path.dirname(__filename);
+  } else {
+    throw new Error('Not in ES module environment');
+  }
+} catch (error) {
+  // Fallback for test environment or other issues
+  __filename = 'src/hybrid-embeddings.js';
+  __dirname = path.resolve('src');
+}
 
 // Simple preferences manager (avoiding electron-store for now)
 class PreferencesManager {
