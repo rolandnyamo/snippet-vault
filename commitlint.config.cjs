@@ -1,5 +1,9 @@
 module.exports = {
   extends: ['@commitlint/config-conventional'],
+  ignores: [
+    // Skip commitlint for semantic-release generated commits
+    (commit) => commit.includes('chore(release):')
+  ],
   rules: {
     'type-enum': [
       2,
