@@ -1,4 +1,5 @@
 import { jest } from '@jest/globals';
+import path from 'path';
 
 // Mock fs 
 const mockFs = {
@@ -53,9 +54,10 @@ describe('store', () => {
     const configPath = get_config_path(mockApp.getPath('userData'));
     await initializeDatabase(configPath, mockDialog, mockApp);
 
+    const expectedStoragePath = path.join(mockApp.getPath('userData'), 'database');
     expect(mockFs.writeFileSync).toHaveBeenCalledWith(
       configPath,
-      JSON.stringify({ storage_path: '/tmp/userData/database' }, null, 2)
+      JSON.stringify({ storage_path: expectedStoragePath }, null, 2)
     );
   });
 
@@ -79,6 +81,7 @@ describe('store', () => {
     const configPath = get_config_path(mockApp.getPath('userData'));
     await initializeDatabase(configPath, mockDialog, mockApp);
 
-    expect(mockFs.mkdirSync).toHaveBeenCalledWith('/tmp/userData/database', { recursive: true });
+    const expectedStoragePath = path.join(mockApp.getPath('userData'), 'database');
+    expect(mockFs.mkdirSync).toHaveBeenCalledWith(expectedStoragePath, { recursive: true });
   });
 });
