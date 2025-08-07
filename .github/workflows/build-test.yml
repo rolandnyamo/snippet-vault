@@ -30,6 +30,7 @@ jobs:
       run: npm test
 
   build-packages:
+    if: github.event_name == 'pull_request'
     needs: test
     runs-on: ${{ matrix.os }}
     
