@@ -13,6 +13,8 @@ module.exports = {
     // Disable code signing for CI builds to avoid "damaged" error
     // Enable this later when proper certificates are configured
     osxSign: false,
+    // Only build for Apple Silicon on macOS
+    arch: process.platform === 'darwin' ? 'arm64' : undefined,
     ignore: [
       // Exclude some large TensorFlow files that aren't needed
       /node_modules\/@tensorflow\/.*\/dist\/.*\.map$/,
@@ -31,12 +33,17 @@ module.exports = {
   },
   makers: [
     {
-      name: '@electron-forge/maker-squirrel',
+      name: '@electron-forge/maker-wix',
       platforms: ['win32'],
       config: {
-        name: 'snippet-vault',
-        iconUrl: 'https://raw.githubusercontent.com/rolandnyamo/snippet-vault/main/assets/icons/icon.ico',
-        setupIcon: './assets/icons/icon.ico'
+        name: 'Snippet Vault',
+        description: 'A smart snippet management application',
+        manufacturer: 'Roland Nyamoga',
+        version: '1.0.0',
+        icon: './assets/icons/icon.ico',
+        ui: {
+          chooseDirectory: true
+        }
       },
     },
     {
@@ -45,24 +52,6 @@ module.exports = {
       config: {
         icon: './assets/icons/icon.icns'
       }
-    },
-    {
-      name: '@electron-forge/maker-deb',
-      platforms: ['linux'],
-      config: {
-        options: {
-          icon: './assets/icons/icon.png'
-        }
-      },
-    },
-    {
-      name: '@electron-forge/maker-rpm',
-      platforms: ['linux'],
-      config: {
-        options: {
-          icon: './assets/icons/icon.png'
-        }
-      },
     },
   ],
   plugins: [
