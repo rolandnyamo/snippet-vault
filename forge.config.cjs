@@ -8,6 +8,7 @@ module.exports = {
     },
     icon: './assets/icons/icon', // Don't include extension - Electron will pick the right one
     name: 'Snippet Vault',
+    executableName: 'snippet-vault',
     appBundleId: 'com.rolandnyamoga.snippet-vault',
     ignore: [
       // Don't ignore anything - let all onnxruntime packages be included but unpacked
@@ -24,6 +25,7 @@ module.exports = {
   makers: [
     {
       name: '@electron-forge/maker-squirrel',
+      platforms: ['win32'],
       config: {
         name: 'snippet-vault',
         iconUrl: 'https://raw.githubusercontent.com/rolandnyamo/snippet-vault/main/assets/icons/icon.ico',
@@ -39,6 +41,7 @@ module.exports = {
     },
     {
       name: '@electron-forge/maker-deb',
+      platforms: ['linux'],
       config: {
         options: {
           icon: './assets/icons/icon.png'
@@ -47,6 +50,7 @@ module.exports = {
     },
     {
       name: '@electron-forge/maker-rpm',
+      platforms: ['linux'],
       config: {
         options: {
           icon: './assets/icons/icon.png'

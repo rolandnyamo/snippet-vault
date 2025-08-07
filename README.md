@@ -54,6 +54,59 @@ For developers working on this project:
 - **Vector Database**: LanceDB for efficient vector storage and similarity search
 - **Dual Storage**: Separate raw data and embeddings tables for backup resilience
 
+### Development Workflow
+
+This project uses semantic versioning with conventional commits for automated releases.
+
+**Branch Strategy:**
+- `dev`: Development branch where features are developed and version bumps happen
+- `main`: Production branch that triggers releases
+
+**Commit Guidelines:**
+Use the interactive commit tool to ensure proper formatting:
+```bash
+npm run commit
+```
+
+This will guide you through creating commits that follow the [Conventional Commits](https://www.conventionalcommits.org/) specification:
+
+- `feat:` - New features (triggers minor version bump)
+- `fix:` - Bug fixes (triggers patch version bump)
+- `docs:` - Documentation changes
+- `style:` - Code formatting, no logic changes
+- `refactor:` - Code refactoring without feature changes
+- `test:` - Adding or updating tests
+- `chore:` - Maintenance tasks, dependency updates
+
+**Breaking Changes:**
+Add `!` after the type or add `BREAKING CHANGE:` in the footer for major version bumps:
+```
+feat!: change API signature
+fix(api)!: remove deprecated endpoint
+```
+
+**Release Process:**
+
+1. **Development**: Work on the `dev` branch with conventional commits
+2. **Pull Request**: Open PR from `dev` to `main` (triggers build validation and package artifacts)
+3. **Release**: Merge PR to `main` (triggers automatic version bump and release with built packages)
+
+The release process:
+- Automatically determines version bump based on commit types
+- Generates changelog from commit messages
+- Creates GitHub release with multi-platform packages (macOS, Windows, Linux)
+- Tags the release appropriately
+
+**Local Validation:**
+Git hooks validate your commits locally before pushing:
+```bash
+# This will fail if commit message doesn't follow conventions
+git commit -m "invalid commit message"
+
+# Use the interactive tool instead
+npm run commit
+```
+
 ## Getting Started
 
 ### First Launch
