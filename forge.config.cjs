@@ -4,7 +4,7 @@ const { FuseV1Options, FuseVersion } = require('@electron/fuses');
 module.exports = {
   packagerConfig: {
     asar: {
-      unpack: '{**/node_modules/@lancedb/**/*,**/*.node}',
+      unpack: '{**/node_modules/@lancedb/**/*,**/node_modules/@tensorflow*/**/*,**/*.node}',
     },
     icon: './assets/icons/icon', // Don't include extension - Electron will pick the right one
     name: 'Snippet Vault',
@@ -14,7 +14,11 @@ module.exports = {
     // Enable this later when proper certificates are configured
     osxSign: false,
     ignore: [
-      // Don't ignore anything - let all onnxruntime packages be included but unpacked
+      // Exclude some large TensorFlow files that aren't needed
+      /node_modules\/@tensorflow\/.*\/dist\/.*\.map$/,
+      /node_modules\/@tensorflow\/.*\/dist\/.*test.*$/,
+      /node_modules\/@tensorflow\/.*\/demo/,
+      /node_modules\/@tensorflow\/.*\/docs/,
     ],
   },
   rebuildConfig: {},

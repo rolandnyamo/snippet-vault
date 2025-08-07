@@ -74,8 +74,10 @@ jobs:
     - name: Install dependencies
       run: npm ci
 
-    - name: Download models (required for offline operation)
-      run: npm run download-models
+    # Skip model download during build to reduce installer size
+    # Models will be downloaded on first run instead
+    # - name: Download models (required for offline operation)
+    #   run: npm run download-models
 
     - name: Build application
       run: npm run build

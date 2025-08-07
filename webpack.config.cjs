@@ -3,7 +3,7 @@ const HtmlWebpackPlugin = require('html-webpack-plugin');
 
 module.exports = {
   target: 'electron-renderer',
-  mode: 'development',
+  mode: 'production', // Changed to production for better optimization
   entry: './src/app.tsx',
   output: {
     path: path.resolve(__dirname, 'dist'),
@@ -11,6 +11,12 @@ module.exports = {
   },
   resolve: {
     extensions: ['.tsx', '.ts', '.js', '.jsx'],
+    // Help webpack resolve tensorflow dependencies
+    fallback: {
+      "fs": false,
+      "path": false,
+      "crypto": false
+    }
   },
   module: {
     rules: [
@@ -31,5 +37,24 @@ module.exports = {
       filename: 'index.html',
     }),
   ],
-  devtool: 'inline-source-map',
+  optimization: {
+    usedExports: true,
+    sideEffects: false,
+    // Better tree shaking for TensorFlow
+    providedExports: true,
+  },
+  externals: {
+    // Keep TensorFlow as external to avoid bundling - loaded dynamically if available
+    '@tensorflow/tfjs-core': 'commonjs @tensorflow/tfjs-core',
+    '@tensorflow/tfjs-backend-cpu': 'commonjs @tensorflow/tfjs-backend-cpu',
+    '@tensorflow-models/universal-sentence-encoder': 'commonjs @tensorflow-models/universal-sentence-encoder'
+  },
+  // Add webpack define plugin to enable conditional builds
+  plugins: [
+    new HtmlWebpackPlugin({
+      template: './src/index.html',
+      filename: 'index.html',
+    })
+  ],
+  devtool: false, // Disable source maps for smaller builds
 };

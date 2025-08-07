@@ -5,10 +5,11 @@ interface DetailPanelProps {
   item: Item;
   onEdit: (item: Item) => void;
   onCopy: (item: Item) => void;
+  onDelete: (itemId: string) => void;
   searchQuery?: string;
 }
 
-const DetailPanel: React.FC<DetailPanelProps> = ({ item, onEdit, onCopy, searchQuery }) => {
+const DetailPanel: React.FC<DetailPanelProps> = ({ item, onEdit, onCopy, onDelete, searchQuery }) => {
   const [showCopySuccess, setShowCopySuccess] = useState(false);
 
   const getTypeLabel = (type: string): string => {
@@ -68,6 +69,12 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ item, onEdit, onCopy, searchQ
     onEdit(item);
   };
 
+  const handleDelete = () => {
+    if (window.confirm(`Are you sure you want to delete "${item.description}"?`)) {
+      onDelete(item.id);
+    }
+  };
+
   return (
     <div className="detail-panel">
       <div className="detail-header">
@@ -97,6 +104,13 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ item, onEdit, onCopy, searchQ
             onClick={handleEdit}
           >
             Edit
+          </button>
+          <button 
+            className="action-button danger" 
+            onClick={handleDelete}
+            style={{ marginLeft: '8px' }}
+          >
+            Delete
           </button>
         </div>
         

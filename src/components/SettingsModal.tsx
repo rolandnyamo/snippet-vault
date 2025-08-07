@@ -1,23 +1,30 @@
 import React, { useState, useEffect } from 'react';
+import DeleteConfirmationModal from './DeleteConfirmationModal';
 
 const { ipcRenderer } = window.require('electron');
 
 interface SettingsModalProps {
   onClose: () => void;
+  onImportSuccess?: () => void;
+  onDeleteAllSuccess?: () => void;
 }
 
-const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
+const SettingsModal: React.FC<SettingsModalProps> = ({ onClose, onImportSuccess, onDeleteAllSuccess }) => {
   const [dataPath, setDataPath] = useState<string>('');
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState<{ current: number; total: number; success: number; errors: number }>({ current: 0, total: 0, success: 0, errors: 0 });
   const [isDeletingAll, setIsDeletingAll] = useState(false);
   const [embeddingModel, setEmbeddingModel] = useState<string>('');
+  const [currentModelType, setCurrentModelType] = useState<string>('');
   const [isRegeneratingEmbeddings, setIsRegeneratingEmbeddings] = useState(false);
+  const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
 
   useEffect(() => {
     // Get data path and embedding model when modal opens
     ipcRenderer.send('get-data-path');
     ipcRenderer.send('get-embedding-model');
+    ipcRenderer.send('get-current-model-type');
 
     const handleDataPath = (event: any, path: string) => {
       setDataPath(path || 'Not found');
@@ -25,6 +32,10 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
 
     const handleEmbeddingModel = (event: any, model: string) => {
       setEmbeddingModel(model);
+    };
+
+    const handleCurrentModelType = (event: any, modelType: string) => {
+      setCurrentModelType(modelType);
     };
 
     const handleExportResult = (event: any, data: string, format: string) => {
@@ -50,20 +61,34 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
 
     const handleImportResult = (event: any, result: any) => {
       setIsImporting(false);
+      setImportProgress({ current: 0, total: 0, success: 0, errors: 0 });
       alert(result.message);
       if (result.errors && result.errors.length > 0) {
         console.log('Import errors:', result.errors);
+      }
+      // Notify parent component to refresh items
+      if (onImportSuccess) {
+        onImportSuccess();
       }
     };
 
     const handleImportError = (event: any, error: string) => {
       setIsImporting(false);
+      setImportProgress({ current: 0, total: 0, success: 0, errors: 0 });
       alert(`Import failed: ${error}`);
+    };
+
+    const handleImportProgress = (event: any, progress: any) => {
+      setImportProgress(progress);
     };
 
     const handleDeleteAllResult = (event: any, result: any) => {
       setIsDeletingAll(false);
       alert(result.message);
+      // Notify parent component to refresh items
+      if (onDeleteAllSuccess) {
+        onDeleteAllSuccess();
+      }
     };
 
     const handleDeleteAllError = (event: any, error: string) => {
@@ -83,10 +108,12 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
 
     ipcRenderer.on('data-path', handleDataPath);
     ipcRenderer.on('embedding-model', handleEmbeddingModel);
+    ipcRenderer.on('current-model-type-result', handleCurrentModelType);
     ipcRenderer.on('export-data-result', handleExportResult);
     ipcRenderer.on('export-data-error', handleExportError);
     ipcRenderer.on('import-data-result', handleImportResult);
     ipcRenderer.on('import-data-error', handleImportError);
+    ipcRenderer.on('import-data-progress', handleImportProgress);
     ipcRenderer.on('delete-all-data-result', handleDeleteAllResult);
     ipcRenderer.on('delete-all-data-error', handleDeleteAllError);
     ipcRenderer.on('regenerate-embeddings-result', handleRegenerateEmbeddingsResult);
@@ -95,10 +122,12 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
     return () => {
       ipcRenderer.removeListener('data-path', handleDataPath);
       ipcRenderer.removeListener('embedding-model', handleEmbeddingModel);
+      ipcRenderer.removeListener('current-model-type-result', handleCurrentModelType);
       ipcRenderer.removeListener('export-data-result', handleExportResult);
       ipcRenderer.removeListener('export-data-error', handleExportError);
       ipcRenderer.removeListener('import-data-result', handleImportResult);
       ipcRenderer.removeListener('import-data-error', handleImportError);
+      ipcRenderer.removeListener('import-data-progress', handleImportProgress);
       ipcRenderer.removeListener('delete-all-data-result', handleDeleteAllResult);
       ipcRenderer.removeListener('delete-all-data-error', handleDeleteAllError);
       ipcRenderer.removeListener('regenerate-embeddings-result', handleRegenerateEmbeddingsResult);
@@ -132,25 +161,17 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
   };
 
   const handleDeleteAll = () => {
-    const confirmFirst = confirm(
-      'Are you absolutely sure you want to delete ALL your snippets? This action cannot be undone!'
-    );
-    
-    if (confirmFirst) {
-      const confirmSecond = confirm(
-        'This will permanently delete all your data. Type "DELETE ALL" to confirm:'
-      );
-      
-      if (confirmSecond) {
-        const userInput = prompt('Type "DELETE ALL" to confirm:');
-        if (userInput === 'DELETE ALL') {
-          setIsDeletingAll(true);
-          ipcRenderer.send('delete-all-data');
-        } else {
-          alert('Delete cancelled - text did not match.');
-        }
-      }
-    }
+    setShowDeleteConfirmation(true);
+  };
+
+  const handleDeleteConfirmed = () => {
+    setShowDeleteConfirmation(false);
+    setIsDeletingAll(true);
+    ipcRenderer.send('delete-all-data');
+  };
+
+  const handleDeleteCancelled = () => {
+    setShowDeleteConfirmation(false);
   };
 
   const handleRegenerateEmbeddings = () => {
@@ -167,6 +188,20 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
   const handleShowInFolder = () => {
     if (dataPath && dataPath !== 'Not found') {
       ipcRenderer.send('show-item-in-folder', dataPath);
+    }
+  };
+
+  const handleCopyPath = async () => {
+    if (dataPath && dataPath !== 'Not found') {
+      try {
+        // Quote the path to handle spaces properly
+        const quotedPath = `"${dataPath}"`;
+        await navigator.clipboard.writeText(quotedPath);
+        // You could add a toast notification here if desired
+        console.log('Quoted path copied to clipboard:', quotedPath);
+      } catch (error) {
+        console.error('Failed to copy path:', error);
+      }
     }
   };
 
@@ -203,6 +238,14 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                 className="show-folder-button"
               >
                 Show in Folder
+              </button>
+              <button 
+                onClick={handleCopyPath}
+                disabled={!dataPath || dataPath === 'Not found'}
+                className="copy-path-button"
+                title="Copy path to clipboard"
+              >
+                Copy Path
               </button>
             </div>
           </div>
@@ -244,12 +287,37 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                 {isImporting ? 'Importing...' : 'Import from File'}
               </button>
             </div>
+            
+            {/* Import Progress Display */}
+            {isImporting && importProgress.total > 0 && (
+              <div className="progress-container" style={{ marginTop: '15px' }}>
+                <div className="progress-header">
+                  <span>Progress: {importProgress.current} / {importProgress.total}</span>
+                  <span>✅ Success: {importProgress.success} | ❌ Errors: {importProgress.errors}</span>
+                </div>
+                <div style={{
+                  width: '100%',
+                  height: '8px',
+                  backgroundColor: '#e0e0e0',
+                  borderRadius: '4px',
+                  overflow: 'hidden',
+                  margin: '8px 0'
+                }}>
+                  <div style={{
+                    width: `${(importProgress.current / importProgress.total) * 100}%`,
+                    height: '100%',
+                    backgroundColor: '#007AFF',
+                    transition: 'width 0.3s ease'
+                  }}></div>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="settings-section">
-            <h3>Embedding Model</h3>
+            <h3>Search Engine</h3>
             <p className="settings-description">
-              Current model used for semantic search and embeddings.
+              Choose how Snippet Vault understands and searches your content.
             </p>
             <div className="model-info">
               <input 
@@ -257,7 +325,20 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                 value={embeddingModel} 
                 readOnly 
                 className="model-input"
+                placeholder="Click 'Choose Model' to select search engine"
               />
+              <button 
+                onClick={() => {
+                  // This will be handled by the parent component
+                  window.dispatchEvent(new CustomEvent('openModelSelection', { 
+                    detail: { currentModel: currentModelType }
+                  }));
+                }}
+                className="choose-model-button"
+                title="Choose between Fast (built-in) or Smart (AI download) search"
+              >
+                Choose Model
+              </button>
               <button 
                 onClick={handleRegenerateEmbeddings}
                 disabled={isRegeneratingEmbeddings}
@@ -280,9 +361,24 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                 disabled={isDeletingAll}
                 className="delete-all-button"
               >
-                {isDeletingAll ? 'Deleting...' : 'Delete All Data'}
+                {isDeletingAll ? '🗑️ Deleting All Items...' : 'Delete All Data'}
               </button>
             </div>
+            
+            {/* Delete All Loading Display */}
+            {isDeletingAll && (
+              <div style={{ 
+                marginTop: '15px', 
+                padding: '10px', 
+                backgroundColor: '#ffebee', 
+                border: '1px solid #ffcdd2', 
+                borderRadius: '4px',
+                textAlign: 'center',
+                color: '#c62828'
+              }}>
+                🗑️ Deleting all items... This may take a moment.
+              </div>
+            )}
           </div>
 
           <div className="settings-section">
@@ -293,6 +389,13 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
           </div>
         </div>
       </div>
+      
+      {/* Delete Confirmation Modal */}
+      <DeleteConfirmationModal
+        isOpen={showDeleteConfirmation}
+        onConfirm={handleDeleteConfirmed}
+        onCancel={handleDeleteCancelled}
+      />
     </div>
   );
 };

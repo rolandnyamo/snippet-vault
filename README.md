@@ -131,6 +131,29 @@ This is a one-time setup required for unsigned macOS applications.
 #### Windows & Linux Users
 Download and run the installer from the [GitHub Releases page](https://github.com/rolandnyamo/snippet-vault/releases). No additional steps needed.
 
+**Download Sizes:**
+- macOS: ~25-35MB (x64 build, includes both search engines)
+- Windows: ~30-40MB (installer, includes both search engines)  
+- Linux: ~25-35MB (DEB/RPM, includes both search engines)
+
+**Search Engine Options:**
+Snippet Vault offers two search engines you can choose from in Settings:
+
+1. **⚡ Fast Model (Built-in)**
+   - Instant startup, no downloads
+   - Good for basic keyword and simple semantic matching
+   - Perfect for quick searches and simple queries
+   - Size: < 1KB (built into the app)
+
+2. **🧠 Smart Model (AI Download)**
+   - Advanced Google Universal Sentence Encoder
+   - Downloads ~20MB on first use (one-time only)
+   - Best semantic understanding and context awareness
+   - Handles complex queries and multi-language content
+
+**First Launch Model Selection:**
+On first launch, Snippet Vault starts with the Fast Model for instant usability. You can switch to the Smart Model anytime in Settings → "Choose Model" for enhanced search capabilities.
+
 ### First Launch
 
 When you first launch Snippet Vault, it will automatically create a database in your system's user data directory. All of your data, including the search index and saved items, is stored locally on your computer for complete privacy.
@@ -340,15 +363,22 @@ Build Architecture:
 Data Flow:
 1. User inputs search query or adds new item
 2. Frontend sends request to Main Process store
-3. For new items: Text is processed by TensorFlow.js to generate embeddings
+3. For new items: Text is processed by current embedding model to generate embeddings
 4. Data stored in both Raw Data and Embeddings tables in LanceDB
-5. For searches: Query is embedded and compared against stored vectors
+5. For searches: Query is embedded using current model and compared against stored vectors
 6. Results ranked by semantic similarity + keyword matching
 7. UI updates with highlighted results in real-time
 
+Dual Embedding Architecture:
+• Fast Model: Built-in TF-IDF style embeddings for instant startup
+• Smart Model: TensorFlow.js Universal Sentence Encoder for advanced AI search
+• Runtime Selection: Users choose model type in Settings with instant switching
+• Dynamic Loading: TensorFlow model downloads only when selected (~20MB)
+• Preference Persistence: Model choice saved locally and restored on restart
+
 Privacy & Offline Design:
 • All processing happens locally - no network calls
-• TensorFlow.js runs in browser context for compatibility
+• Both models run entirely offline for maximum privacy
 • LanceDB provides efficient vector search without external services
 • Dual-table architecture ensures data recovery if embeddings corrupted
 ```

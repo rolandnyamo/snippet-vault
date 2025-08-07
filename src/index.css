@@ -717,6 +717,64 @@ body {
   cursor: not-allowed;
 }
 
+.copy-path-button {
+  padding: 8px 16px;
+  background: #28a745;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  white-space: nowrap;
+  margin-left: 8px;
+}
+
+.copy-path-button:hover:not(:disabled) {
+  background: #218838;
+}
+
+.copy-path-button:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+}
+
+/* Toast Notification */
+.toast-notification {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  background: rgba(0, 0, 0, 0.9);
+  color: white;
+  padding: 12px 20px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  z-index: 10000;
+  animation: slideInFromRight 0.3s ease-out, fadeOut 0.3s ease-out 2.7s;
+  max-width: 400px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+@keyframes slideInFromRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes fadeOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
 .export-buttons {
   display: flex;
   gap: 12px;
@@ -802,6 +860,23 @@ body {
 .regenerate-button:disabled {
   background: #ccc;
   cursor: not-allowed;
+}
+
+/* Model selection button */
+.choose-model-button {
+  padding: 8px 16px;
+  background: #007acc;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  white-space: nowrap;
+  margin-right: 10px;
+}
+
+.choose-model-button:hover {
+  background: #0066aa;
 }
 
 /* Danger zone styles */

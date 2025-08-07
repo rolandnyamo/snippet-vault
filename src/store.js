@@ -1,5 +1,5 @@
-// Force TensorFlow.js backend - no more ONNX dependencies!
-import { getEmbeddingPipeline } from './tensorflow-embeddings.js';
+// Hybrid embedding system - supports both lightweight and TensorFlow models
+import { embeddingManager, EMBEDDING_MODELS } from './hybrid-embeddings.js';
 import fs from 'fs';
 import lancedb from '@lancedb/lancedb';
 import path from 'path';
@@ -7,8 +7,8 @@ import { fileURLToPath } from 'url';
 import { v4 as uuidv4 } from 'uuid';
 import * as arrow from 'apache-arrow';
 
-// Current embedding model identifier
-const CURRENT_EMBEDDING_MODEL = 'tensorflow/universal-sentence-encoder@3.3.0';
+// Initialize embedding system
+let isEmbeddingInitialized = false;
 
 // Get the current directory for ES modules (lazy initialization for tests)
 let __filename;
@@ -71,6 +71,7 @@ export function get_config_path(userDataPath) {
 export async function initializeDatabase(configPath, dialog, app) {
   let config = {};
   if (fs.existsSync(configPath)) {
+    console.log('📄 Loading existing config from:', configPath);
     config = JSON.parse(fs.readFileSync(configPath));
   }
 
@@ -79,6 +80,7 @@ export async function initializeDatabase(configPath, dialog, app) {
     if (!config.storage_path) {
       // Use application user data directory by default
       const defaultStoragePath = path.join(app.getPath('userData'), 'database');
+      console.log('📁 Setting up database at:', defaultStoragePath);
       
       // Create the directory if it doesn't exist
       if (!fs.existsSync(defaultStoragePath)) {
@@ -87,11 +89,17 @@ export async function initializeDatabase(configPath, dialog, app) {
       
       config.storage_path = defaultStoragePath;
       fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+    } else {
+      console.log('📁 Using existing database at:', config.storage_path);
     }
 
     try {
+      console.log('🔌 Connecting to LanceDB...');
       db = await lancedb.connect(config.storage_path);
+      console.log('✅ LanceDB connected successfully');
+      
       const tables = await db.tableNames();
+      console.log('📋 Existing tables:', tables);
       
       // Initialize raw items table (backup/export source)
       if (!tables.includes('items_raw')) {
@@ -106,26 +114,35 @@ export async function initializeDatabase(configPath, dialog, app) {
         
         const rawTable = await db.createTable('items_raw', sampleRawData);
         await rawTable.delete('id = "sample"');
+        console.log('✅ items_raw table created');
+      } else {
+        console.log('✅ items_raw table already exists');
       }
       
       // Initialize embeddings table
       if (!tables.includes('items_embeddings')) {
         const sampleEmbeddingData = [{
           id: 'sample',
-          embedding_model: CURRENT_EMBEDDING_MODEL,
-          vector: new Array(512).fill(0.0),
+          embedding_model: getCurrentEmbeddingModel(),
+          vector: createZeroVector(),
           created_at: new Date().toISOString(),
         }];
         
         const embeddingTable = await db.createTable('items_embeddings', sampleEmbeddingData);
         await embeddingTable.delete('id = "sample"');
+        console.log('✅ items_embeddings table created');
+      } else {
+        console.log('✅ items_embeddings table already exists');
       }
       
       // Legacy: Keep old 'items' table for backward compatibility, but migrate data
       if (tables.includes('items')) {
         await migrateLegacyData(db);
+      } else {
+        console.log('ℹ️ No legacy data to migrate');
       }
       
+      console.log('🎉 Database initialization completed successfully!');
       break; // Success, exit loop
     } catch (err) {
       console.error('Error initializing database:', err);
@@ -188,7 +205,7 @@ async function migrateLegacyData(db) {
       await embeddingTable.add([{
         id: item.id,
         embedding_model: item.embedding_model || 'tensorflow/universal-sentence-encoder',
-        vector: vectorArray || new Array(512).fill(0.0),
+        vector: vectorArray || createZeroVector(), // Use current model dimensions
         created_at: item.created_at,
       }]);
     }
@@ -207,13 +224,30 @@ async function migrateLegacyData(db) {
  * Get current embedding model identifier
  */
 export function getCurrentEmbeddingModel() {
-  return CURRENT_EMBEDDING_MODEL;
+  const modelType = embeddingManager.getCurrentModelType();
+  return modelType === EMBEDDING_MODELS.TENSORFLOW ? 
+    'tensorflow/universal-sentence-encoder@3.3.0' : 
+    'lightweight-embeddings@1.0.0';
+}
+
+/**
+ * Get current vector dimensions based on the active model
+ */
+function getCurrentDimensions() {
+  return embeddingManager.getCurrentDimensions();
+}
+
+/**
+ * Create a zero vector with appropriate dimensions for current model
+ */
+function createZeroVector() {
+  return new Array(getCurrentDimensions()).fill(0.0);
 }
 
 /**
  * Check if embedding needs regeneration and regenerate if necessary
  */
-async function ensureEmbeddingCurrent(itemId, db) {
+async function ensureEmbeddingCurrent(itemId, db, configPath = null) {
   try {
     const embeddingTable = await db.openTable('items_embeddings');
     const embeddings = await embeddingTable.query().where(`id = "${itemId}"`).toArray();
@@ -221,8 +255,9 @@ async function ensureEmbeddingCurrent(itemId, db) {
     if (embeddings.length === 0) return null;
     
     const embedding = embeddings[0];
-    if (embedding.embedding_model !== CURRENT_EMBEDDING_MODEL) {
-      console.log(`Regenerating embedding for item ${itemId}: ${embedding.embedding_model} -> ${CURRENT_EMBEDDING_MODEL}`);
+    const currentModel = getCurrentEmbeddingModel();
+    if (embedding.embedding_model !== currentModel) {
+      console.log(`Regenerating embedding for item ${itemId}: ${embedding.embedding_model} -> ${currentModel}`);
       
       // Get raw data
       const rawTable = await db.openTable('items_raw');
@@ -234,45 +269,337 @@ async function ensureEmbeddingCurrent(itemId, db) {
       }
       
       const rawItem = rawItems[0];
-      const newEmbedding = await generateEmbedding(rawItem.payload + ' ' + rawItem.description);
+      const newEmbedding = await generateEmbedding(rawItem.payload + ' ' + rawItem.description, db, configPath);
       
-      // Update embedding
-      await embeddingTable.delete(`id = "${itemId}"`);
-      await embeddingTable.add([{
-        id: itemId,
-        embedding_model: CURRENT_EMBEDDING_MODEL,
-        vector: newEmbedding,
-        created_at: new Date().toISOString(),
-      }]);
-      
-      return newEmbedding;
+      // Try to update embedding safely
+      try {
+        await embeddingTable.delete(`id = "${itemId}"`);
+        await embeddingTable.add([{
+          id: itemId,
+          embedding_model: currentModel,
+          vector: newEmbedding,
+          created_at: new Date().toISOString(),
+        }]);
+        return newEmbedding;
+      } catch (deleteError) {
+        console.warn(`Could not update embedding for item ${itemId}:`, deleteError.message);
+        // Return existing embedding on update failure to prevent corruption cascade
+        return embedding.vector;
+      }
     }
     
     return embedding.vector;
   } catch (error) {
-    console.error('Error ensuring embedding current:', error);
+    console.error(`Error ensuring embedding current for ${itemId}:`, error);
+    
+    // Check if this is a corruption error
+    if (error.message.includes('Object at location') && error.message.includes('not found')) {
+      console.warn('Database corruption detected for individual item, skipping embedding update');
+      // Instead of rebuilding the entire table for one item, just skip it
+      // The rebuild should be triggered manually or by a separate maintenance function
+      return null;
+    }
+    
     return null;
   }
 }
 
 /**
- * Generate embeddings for text using Universal Sentence Encoder
+ * Ensure embedding system is initialized
+ */
+async function ensureEmbeddingInitialized() {
+  if (!isEmbeddingInitialized) {
+    await embeddingManager.initialize();
+    isEmbeddingInitialized = true;
+  }
+}
+
+/**
+ * Check if embeddings table has correct model and dimensions, rebuild if different
+ */
+async function ensureEmbeddingTableCompatible(db, configPath) {
+  // Skip if already rebuilding to avoid race conditions
+  if (globalThis.isRebuilding) {
+    console.log('⏳ Rebuild already in progress, skipping...');
+    return;
+  }
+
+  try {
+    const embeddingTable = await db.openTable('items_embeddings');
+    const sampleEmbeddings = await embeddingTable.query().limit(1).toArray();
+    
+    if (sampleEmbeddings.length > 0) {
+      const currentModel = getCurrentEmbeddingModel();
+      const currentDims = getCurrentDimensions();
+      
+      const existingModel = sampleEmbeddings[0].embedding_model;
+      const existingDims = sampleEmbeddings[0].vector ? sampleEmbeddings[0].vector.length : 0;
+      
+      // If model changed OR dimensions changed → nuclear rebuild
+      if (existingModel !== currentModel || existingDims !== currentDims) {
+        console.warn(`Model/dimension change detected: ${existingModel}(${existingDims}d) → ${currentModel}(${currentDims}d). Nuclear rebuild required.`);
+        await nuclearRebuildEmbeddings(db, configPath);
+        return;
+      }
+    }
+  } catch (error) {
+    console.error('Error checking embedding table compatibility, performing nuclear rebuild:', error);
+    // If there's any corruption, nuclear rebuild
+    await nuclearRebuildEmbeddings(db, configPath);
+  }
+}
+
+/**
+ * Nuclear option: Completely rebuild embeddings table by wiping it clean
+ */
+async function nuclearRebuildEmbeddings(db, configPath) {
+  // Prevent concurrent rebuilds
+  if (globalThis.isRebuilding) {
+    console.log('⏳ Nuclear rebuild already in progress, waiting...');
+    return;
+  }
+
+  globalThis.isRebuilding = true;
+
+  try {
+    console.log('Starting embeddings rebuild...');
+    
+    // Notify UI that rebuild is starting
+    if (globalThis.mainWindow) {
+      globalThis.mainWindow.webContents.send('rebuild-started', {
+        message: 'Rebuilding database for model change...',
+        model: getCurrentEmbeddingModel()
+      });
+    }
+    
+    // Get all raw data before nuking embeddings table
+    const rawTable = await db.openTable('items_raw');
+    const allRawItems = await rawTable.query().toArray();
+    
+    console.log(`📦 Backing up ${allRawItems.length} raw items`);
+    
+    // Nuclear option: Force delete the embeddings table directory at filesystem level
+    const config = JSON.parse(fs.readFileSync(configPath));
+    const dbPath = config.storage_path;
+    const embeddingsPath = path.join(dbPath, 'items_embeddings.lance');
+    
+    console.log('💥 Nuclear deletion of corrupted embeddings table...');
+    
+    // Force delete at filesystem level - this is the most reliable approach
+    if (fs.existsSync(embeddingsPath)) {
+      fs.rmSync(embeddingsPath, { recursive: true, force: true });
+      console.log('🗑️  Forcibly removed corrupted embedding files');
+    }
+
+    // Wait a bit for filesystem to catch up
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
+    // Recreate fresh embeddings table
+    console.log('🔄 Creating fresh embeddings table...');
+    const sampleData = [{
+      id: 'sample',
+      embedding_model: getCurrentEmbeddingModel(),
+      vector: createZeroVector(),
+      created_at: new Date().toISOString(),
+    }];
+    
+    const newEmbeddingTable = await db.createTable('items_embeddings', sampleData);
+    await newEmbeddingTable.delete('id = "sample"');
+    
+    // Regenerate embeddings for all items with current model
+    console.log(`🔄 Regenerating ${allRawItems.length} embeddings with ${getCurrentEmbeddingModel()}...`);
+    let successCount = 0;
+    let errorCount = 0;
+    
+    for (const item of allRawItems) {
+      try {
+        const embedding = await generateEmbedding(item.payload + ' ' + item.description);
+        await newEmbeddingTable.add([{
+          id: item.id,
+          embedding_model: getCurrentEmbeddingModel(),
+          vector: embedding,
+          created_at: new Date().toISOString(),
+        }]);
+        successCount++;
+        
+        // Update progress
+        if (globalThis.mainWindow) {
+          globalThis.mainWindow.webContents.send('rebuild-progress', {
+            current: successCount + errorCount,
+            total: allRawItems.length,
+            success: successCount,
+            errors: errorCount
+          });
+        }
+      } catch (error) {
+        console.error(`Failed to regenerate embedding for item ${item.id}:`, error);
+        errorCount++;
+      }
+    }
+    
+    console.log(`✅ Nuclear rebuild complete: ${successCount} success, ${errorCount} errors`);
+    
+    // Notify UI that rebuild is complete
+    if (globalThis.mainWindow) {
+      globalThis.mainWindow.webContents.send('rebuild-complete', {
+        success: successCount,
+        errors: errorCount,
+        model: getCurrentEmbeddingModel()
+      });
+    }
+  } catch (error) {
+    console.error('💥 Nuclear rebuild failed catastrophically:', error);
+    
+    // Notify UI of failure
+    if (globalThis.mainWindow) {
+      globalThis.mainWindow.webContents.send('rebuild-error', {
+        error: error.message
+      });
+    }
+    
+    throw error;
+  } finally {
+    globalThis.isRebuilding = false;
+  }
+}
+
+/**
+ * Completely rebuild the embeddings table from raw data
+ */
+async function rebuildEmbeddingsTable(db, configPath = null) {
+  try {
+    console.log('🔄 Rebuilding embeddings table...');
+    
+    // Get all raw data before dropping embeddings table
+    const rawTable = await db.openTable('items_raw');
+    const allRawItems = await rawTable.query().toArray();
+    
+    // Drop and recreate embeddings table with correct dimensions
+    try {
+      await db.dropTable('items_embeddings');
+    } catch (dropError) {
+      console.warn('Could not drop embeddings table, it may not exist:', dropError.message);
+    }
+    
+    const sampleData = [{
+      id: 'sample',
+      embedding_model: getCurrentEmbeddingModel(),
+      vector: createZeroVector(),
+      created_at: new Date().toISOString(),
+    }];
+    
+    let newEmbeddingTable;
+    try {
+      newEmbeddingTable = await db.createTable('items_embeddings', sampleData);
+    } catch (createError) {
+      if (createError.message.includes('already exists')) {
+        console.log('Embeddings table already exists, using existing table');
+        newEmbeddingTable = await db.openTable('items_embeddings');
+        // Clear the existing table
+        try {
+          const existingItems = await newEmbeddingTable.query().toArray();
+          if (existingItems.length > 0) {
+            await newEmbeddingTable.delete('id != ""'); // Delete all rows
+          }
+        } catch (clearError) {
+          console.warn('Could not clear existing embeddings table:', clearError.message);
+        }
+      } else {
+        throw createError;
+      }
+    }
+    
+    // Remove sample data if it exists
+    try {
+      await newEmbeddingTable.delete('id = "sample"');
+    } catch (sampleDeleteError) {
+      // Sample might not exist, ignore error
+    }
+    
+    // Regenerate embeddings for all items with current model
+    console.log(`Regenerating ${allRawItems.length} embeddings with current model...`);
+    let successCount = 0;
+    let errorCount = 0;
+    
+    for (const item of allRawItems) {
+      try {
+        const embedding = await generateEmbedding(item.payload + ' ' + item.description, db, configPath);
+        await newEmbeddingTable.add([{
+          id: item.id,
+          embedding_model: getCurrentEmbeddingModel(),
+          vector: embedding,
+          created_at: new Date().toISOString(),
+        }]);
+        successCount++;
+      } catch (error) {
+        console.error(`Failed to regenerate embedding for item ${item.id}:`, error);
+        errorCount++;
+      }
+    }
+    
+    console.log(`✅ Embeddings table rebuilt: ${successCount} success, ${errorCount} errors`);
+  } catch (error) {
+    console.error('Critical error rebuilding embeddings table:', error);
+    throw error;
+  }
+}
+
+/**
+ * Check database health and fix any corruption issues
+ */
+async function checkDatabaseHealthInternal(configPath) {
+  try {
+    const config = JSON.parse(fs.readFileSync(configPath));
+    const db = await lancedb.connect(config.storage_path);
+    
+    // Check if embeddings table exists and is accessible
+    try {
+      const embeddingTable = await db.openTable('items_embeddings');
+      const testQuery = await embeddingTable.query().limit(1).toArray();
+      console.log('✅ Database health check passed');
+      return true;
+    } catch (error) {
+      if (error.message.includes('Object at location') && error.message.includes('not found')) {
+        console.warn('🔧 Database corruption detected, rebuilding embeddings table...');
+        await rebuildEmbeddingsTable(db, configPath);
+        return true;
+      }
+      throw error;
+    }
+  } catch (error) {
+    console.error('❌ Database health check failed:', error);
+    return false;
+  }
+}
+
+/**
+ * Generate embeddings for text using the current model (lightweight or TensorFlow)
  * @param {string} text - Text to embed
+ * @param {object} db - LanceDB connection (optional)
+ * @param {string} configPath - Path to config file (required if db provided)
  * @returns {Promise<number[]>} Embedding vector
  */
-async function generateEmbedding(text) {
-    const pipeline = await getEmbeddingPipeline();
-    return await pipeline.generateEmbedding(text);
+async function generateEmbedding(text, db = null, configPath = null) {
+    await ensureEmbeddingInitialized();
+    
+    // Only check compatibility if not already rebuilding (avoid infinite loops)
+    if (db && configPath && !globalThis.isRebuilding) {
+      await ensureEmbeddingTableCompatible(db, configPath);
+    }
+    
+    return await embeddingManager.generateEmbedding(text);
 }
 
 export async function addItem(item, configPath) {
   try {
     const itemId = uuidv4();
     const now = new Date().toISOString();
-    const embedding = await generateEmbedding(item.payload + ' ' + item.description);
-
+    
     const config = JSON.parse(fs.readFileSync(configPath));
     const db = await lancedb.connect(config.storage_path);
+    
+    // Generate embedding with database compatibility check
+    const embedding = await generateEmbedding(item.payload + ' ' + item.description, db, configPath);
     
     // Add to raw table (backup/export source)
     const rawTable = await db.openTable('items_raw');
@@ -289,15 +616,67 @@ export async function addItem(item, configPath) {
     const embeddingTable = await db.openTable('items_embeddings');
     await embeddingTable.add([{
       id: itemId,
-      embedding_model: CURRENT_EMBEDDING_MODEL,
+      embedding_model: getCurrentEmbeddingModel(),
       vector: embedding,
       created_at: now,
     }]);
     
   } catch (error) {
-    console.error('Detailed error in addItem:', error);
-    console.error('Error stack:', error.stack);
+    console.error('❌ ERROR in addItem:', error);
     throw new Error(`Failed to add item: ${error.message}`);
+  }
+}
+
+export async function updateItem(itemId, updates, configPath) {
+  try {
+    const config = JSON.parse(fs.readFileSync(configPath));
+    const db = await lancedb.connect(config.storage_path);
+    
+    // Get the current item first
+    const rawTable = await db.openTable('items_raw');
+    const currentItems = await rawTable.query().where(`id = "${itemId}"`).toArray();
+    
+    if (currentItems.length === 0) {
+      throw new Error(`Item with id ${itemId} not found`);
+    }
+    
+    const currentItem = currentItems[0];
+    const now = new Date().toISOString();
+    
+    // Update the raw data
+    const updatedItem = {
+      ...currentItem,
+      ...updates,
+      last_accessed_at: now, // Always update last accessed
+    };
+    
+    // Delete old item
+    await rawTable.delete(`id = "${itemId}"`);
+    
+    // Add updated item
+    await rawTable.add([updatedItem]);
+    
+    // If payload or description changed, regenerate embedding
+    if (updates.payload !== undefined || updates.description !== undefined) {
+      const newText = updatedItem.payload + ' ' + updatedItem.description;
+      const newEmbedding = await generateEmbedding(newText, db, configPath);
+      
+      // Update embedding
+      const embeddingTable = await db.openTable('items_embeddings');
+      await embeddingTable.delete(`id = "${itemId}"`);
+      await embeddingTable.add([{
+        id: itemId,
+        embedding_model: getCurrentEmbeddingModel(),
+        vector: newEmbedding,
+        created_at: now,
+      }]);
+    }
+    
+    return updatedItem;
+  } catch (error) {
+    console.error('Detailed error in updateItem:', error);
+    console.error('Error stack:', error.stack);
+    throw new Error(`Failed to update item: ${error.message}`);
   }
 }
 
@@ -310,7 +689,10 @@ export async function searchItems(query, configPath) {
   }
 
   try {
-    const queryEmbedding = await generateEmbedding(query);
+    // Ensure embedding table is compatible with current model
+    await ensureEmbeddingTableCompatible(db, configPath);
+    
+    const queryEmbedding = await generateEmbedding(query, db, configPath);
 
     // Join raw data with embeddings for search
     const rawTable = await db.openTable('items_raw');
@@ -326,7 +708,7 @@ export async function searchItems(query, configPath) {
     // For each result, get/update embedding and calculate similarity
     const results = [];
     for (const rawItem of rawResults) {
-      await ensureEmbeddingCurrent(rawItem.id, db);
+      await ensureEmbeddingCurrent(rawItem.id, db, configPath);
       
       const embeddings = await embeddingTable.query().where(`id = "${rawItem.id}"`).toArray();
       if (embeddings.length > 0) {
@@ -400,7 +782,7 @@ export async function getRecentItems(configPath) {
       
     const results = [];
     for (const item of recentItems) {
-      await ensureEmbeddingCurrent(item.id, db);
+      await ensureEmbeddingCurrent(item.id, db, configPath);
       const embeddings = await embeddingTable.query().where(`id = "${item.id}"`).toArray();
       results.push({
         ...item,
@@ -491,7 +873,7 @@ export async function getAllItems(configPath) {
       
       const results = [];
       for (const item of items) {
-        await ensureEmbeddingCurrent(item.id, db);
+        await ensureEmbeddingCurrent(item.id, db, configPath);
         const embeddings = await embeddingTable.query().where(`id = "${item.id}"`).toArray();
         results.push({
           ...item,
@@ -588,7 +970,7 @@ export function getDataPath(configPath) {
   }
 }
 
-export async function importData(configPath, importData, format = 'json') {
+export async function importData(configPath, importData, format = 'json', progressCallback = null) {
   try {
     let items = [];
     
@@ -654,12 +1036,17 @@ export async function importData(configPath, importData, format = 'json') {
     let errorCount = 0;
     const errors = [];
     
+    // Send initial progress
+    if (progressCallback) {
+      progressCallback({ current: 0, total: items.length, success: 0, errors: 0 });
+    }
+    
     for (let i = 0; i < items.length; i++) {
       try {
         const item = items[i];
         const itemId = item.id || uuidv4(); // Use existing ID if provided
         const now = new Date().toISOString();
-        const embedding = await generateEmbedding(item.payload + ' ' + item.description);
+        const embedding = await generateEmbedding(item.payload + ' ' + item.description, db, configPath);
         
         // Add to raw table
         await rawTable.add([{
@@ -674,7 +1061,7 @@ export async function importData(configPath, importData, format = 'json') {
         // Add to embeddings table
         await embeddingTable.add([{
           id: itemId,
-          embedding_model: CURRENT_EMBEDDING_MODEL,
+          embedding_model: getCurrentEmbeddingModel(),
           vector: embedding,
           created_at: now,
         }]);
@@ -684,6 +1071,16 @@ export async function importData(configPath, importData, format = 'json') {
         errorCount++;
         errors.push(`Item ${i + 1}: ${error.message}`);
         console.error(`Error importing item ${i + 1}:`, error);
+      }
+      
+      // Send progress update
+      if (progressCallback) {
+        progressCallback({ 
+          current: i + 1, 
+          total: items.length, 
+          success: successCount, 
+          errors: errorCount 
+        });
       }
     }
     
@@ -727,8 +1124,8 @@ export async function deleteAllData(configPath) {
     // Recreate embeddings table
     const sampleEmbeddingData = [{
       id: 'sample',
-      embedding_model: CURRENT_EMBEDDING_MODEL,
-      vector: new Array(512).fill(0.0),
+      embedding_model: getCurrentEmbeddingModel(),
+      vector: createZeroVector(),
       created_at: new Date().toISOString(),
     }];
     
@@ -759,7 +1156,7 @@ export async function regenerateAllEmbeddings(configPath) {
     
     for (const item of allItems) {
       try {
-        const newEmbedding = await generateEmbedding(item.payload + ' ' + item.description);
+        const newEmbedding = await generateEmbedding(item.payload + ' ' + item.description, db, configPath);
         
         // Remove old embedding
         await embeddingTable.delete(`id = "${item.id}"`);
@@ -767,7 +1164,7 @@ export async function regenerateAllEmbeddings(configPath) {
         // Add new embedding
         await embeddingTable.add([{
           id: item.id,
-          embedding_model: CURRENT_EMBEDDING_MODEL,
+          embedding_model: getCurrentEmbeddingModel(),
           vector: newEmbedding,
           created_at: new Date().toISOString(),
         }]);
@@ -780,7 +1177,7 @@ export async function regenerateAllEmbeddings(configPath) {
     
     return {
       success: true,
-      message: `Regenerated ${regeneratedCount} embeddings with model ${CURRENT_EMBEDDING_MODEL}`,
+      message: `Regenerated ${regeneratedCount} embeddings with model ${getCurrentEmbeddingModel()}`,
       regeneratedCount,
       totalItems: allItems.length,
     };
@@ -788,5 +1185,137 @@ export async function regenerateAllEmbeddings(configPath) {
     console.error('Detailed error in regenerateAllEmbeddings:', error);
     console.error('Error stack:', error.stack);
     throw new Error(`Failed to regenerate embeddings: ${error.message}`);
+  }
+}
+
+/**
+ * Get available embedding models
+ */
+export function getAvailableModels() {
+  return {
+    [EMBEDDING_MODELS.LIGHTWEIGHT]: {
+      id: EMBEDDING_MODELS.LIGHTWEIGHT,
+      name: 'Fast (Built-in)',
+      description: 'Instant startup, basic semantic matching',
+      features: [
+        'Instant startup',
+        'No downloads',
+        'Basic semantic matching',
+        'Keyword-based search',
+        'Good for simple queries'
+      ]
+    },
+    [EMBEDDING_MODELS.TENSORFLOW]: {
+      id: EMBEDDING_MODELS.TENSORFLOW,
+      name: 'Smart (AI Download)',
+      description: 'Advanced semantic understanding (~20MB download)',
+      features: [
+        'Advanced semantic understanding',
+        'Context-aware search',
+        'Handles complex queries',
+        'Multi-language support',
+        'State-of-the-art accuracy'
+      ]
+    }
+  };
+}
+
+/**
+ * Set the embedding model type
+ */
+export async function setEmbeddingModelType(modelType) {
+  await embeddingManager.setModelType(modelType);
+  return {
+    success: true,
+    currentModel: getCurrentEmbeddingModel(),
+    modelType
+  };
+}
+
+/**
+ * Get current model type
+ */
+export function getCurrentModelType() {
+  return embeddingManager.getCurrentModelType();
+}
+
+/**
+ * Check if TensorFlow model can be loaded
+ */
+export async function canLoadTensorFlow() {
+  return await embeddingManager.canLoadTensorFlow();
+}
+
+/**
+ * Check database health and repair corruption if found
+ */
+export async function checkDatabaseHealth(configPath) {
+  return await checkDatabaseHealthInternal(configPath);
+}
+
+/**
+ * Complete database reset - removes all corrupted files and recreates clean database
+ */
+export async function resetDatabase(configPath) {
+  try {
+    const config = JSON.parse(fs.readFileSync(configPath));
+    const dbPath = config.storage_path;
+    
+    console.log('🔄 Performing complete database reset...');
+    
+    // Close any existing connections by creating a new connection and closing it
+    try {
+      const tempDb = await lancedb.connect(dbPath);
+      // Let it auto-close
+    } catch (e) {
+      // Ignore connection errors
+    }
+    
+    // Remove corrupted database directory
+    if (fs.existsSync(dbPath)) {
+      console.log('🗑️  Removing corrupted database files...');
+      fs.rmSync(dbPath, { recursive: true, force: true });
+    }
+    
+    // Recreate database directory
+    fs.mkdirSync(dbPath, { recursive: true });
+    
+    // Initialize fresh database
+    const db = await lancedb.connect(dbPath);
+    
+    // Create fresh raw items table
+    const sampleRawData = [{
+      id: 'sample',
+      type: 'text',
+      payload: 'sample payload',
+      description: 'sample description',
+      created_at: new Date().toISOString(),
+      last_accessed_at: new Date().toISOString(),
+    }];
+    
+    const rawTable = await db.createTable('items_raw', sampleRawData);
+    await rawTable.delete('id = "sample"');
+    
+    // Create fresh embeddings table
+    const sampleEmbeddingData = [{
+      id: 'sample',
+      embedding_model: getCurrentEmbeddingModel(),
+      vector: createZeroVector(),
+      created_at: new Date().toISOString(),
+    }];
+    
+    const embeddingTable = await db.createTable('items_embeddings', sampleEmbeddingData);
+    await embeddingTable.delete('id = "sample"');
+    
+    console.log('✅ Database reset complete - fresh database created');
+    
+    return {
+      success: true,
+      message: 'Database reset successfully - all corrupted files removed'
+    };
+    
+  } catch (error) {
+    console.error('❌ Failed to reset database:', error);
+    throw error;
   }
 }

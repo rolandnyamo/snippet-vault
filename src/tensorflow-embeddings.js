@@ -1,5 +1,6 @@
 // Real TensorFlow.js-based embedding implementation (browser-compatible for Electron)
-import * as tf from '@tensorflow/tfjs';
+import '@tensorflow/tfjs-backend-cpu';
+import * as tf from '@tensorflow/tfjs-core';
 import * as use from '@tensorflow-models/universal-sentence-encoder';
 
 class TensorFlowEmbeddingPipeline {
