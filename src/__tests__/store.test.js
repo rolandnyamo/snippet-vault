@@ -25,6 +25,25 @@ const mockLancedb = {
 
 jest.doMock('@lancedb/lancedb', () => mockLancedb);
 
+// Mock the hybrid embedding system
+const mockEmbeddingManager = {
+  initialize: jest.fn().mockResolvedValue(),
+  generateEmbedding: jest.fn().mockResolvedValue([0.1, 0.2, 0.3, 0.4, 0.5]),
+  getCurrentModelType: jest.fn().mockReturnValue('lightweight'),
+  getCurrentDimensions: jest.fn().mockReturnValue(256),
+  isInitialized: jest.fn().mockReturnValue(true),
+  setModelType: jest.fn().mockResolvedValue(),
+  canLoadTensorFlow: jest.fn().mockResolvedValue(false),
+};
+
+jest.doMock('../hybrid-embeddings.js', () => ({
+  embeddingManager: mockEmbeddingManager,
+  EMBEDDING_MODELS: {
+    LIGHTWEIGHT: 'lightweight',
+    TENSORFLOW: 'tensorflow'
+  }
+}));
+
 // Mock apache-arrow
 jest.doMock('apache-arrow', () => ({
   default: {},

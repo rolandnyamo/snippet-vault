@@ -6,6 +6,7 @@ import DetailPanel from './DetailPanel';
 import ItemModal from './ItemModal';
 import SmartAddModal from './SmartAddModal';
 import SettingsModal from './SettingsModal';
+import ModelSelectionModal from './ModelSelectionModal';
 
 const { ipcRenderer } = window.require('electron');
 
@@ -21,11 +22,30 @@ const AppShell: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSmartAddOpen, setIsSmartAddOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isModelSelectionOpen, setIsModelSelectionOpen] = useState(false);
+  const [currentEmbeddingModel, setCurrentEmbeddingModel] = useState<string>('');
   const [editingItem, setEditingItem] = useState<Item | null>(null);
+  const [isRebuilding, setIsRebuilding] = useState(false);
+  const [rebuildProgress, setRebuildProgress] = useState({ current: 0, total: 0, success: 0, errors: 0 });
+  const [toastMessage, setToastMessage] = useState<string>('');
+  const [showToast, setShowToast] = useState(false);
+
+  const showToastNotification = (message: string) => {
+    setToastMessage(message);
+    setShowToast(true);
+    setTimeout(() => setShowToast(false), 3000); // Hide after 3 seconds
+  };
 
   useEffect(() => {
-    // Load recent items on mount
+    // Load recent items and all items on mount
     ipcRenderer.send('get-recent-items');
+    ipcRenderer.send('get-all-items');
+    
+    // Get current embedding model
+    ipcRenderer.send('get-current-model-type');
+    
+    // Check if it's first time using the app
+    ipcRenderer.send('is-first-time');
 
     // Set up IPC listeners
     const handleSearchResults = (event: any, results: Item[]) => {
@@ -62,27 +82,75 @@ const AppShell: React.FC = () => {
         setEditingItem(null);
       }
       
-      // Refresh the current tab
-      if (activeTab === 'recent') {
-        ipcRenderer.send('get-recent-items');
-      } else {
-        ipcRenderer.send('get-all-items');
-      }
+      // Refresh both recent and all items after successful delete
+      ipcRenderer.send('get-recent-items');
+      ipcRenderer.send('get-all-items');
+      showToastNotification('✅ Item deleted successfully!');
     };
 
     const handleItemDeleteError = (event: any, error: string) => {
       console.error('Error deleting item:', error);
-      alert(`Failed to delete item: ${error}`);
+      showToastNotification('❌ Failed to delete item: ' + error);
     };
 
     const handleItemAdded = (event: any, addedItem: any) => {
-      // Refresh recent items immediately after successful add
+      // Refresh both recent and all items after successful add
       ipcRenderer.send('get-recent-items');
+      ipcRenderer.send('get-all-items');
+      showToastNotification('✅ Item added successfully!');
     };
 
     const handleItemAddError = (event: any, error: string) => {
       console.error('Error adding item:', error);
-      // You could show a toast notification here
+      showToastNotification('❌ Failed to add item: ' + error);
+    };
+
+    const handleModelTypeSet = (event: any, result: any) => {
+      setCurrentEmbeddingModel(result.modelType);
+    };
+
+    const handleModelTypeError = (event: any, error: string) => {
+      console.error('Error setting model type:', error);
+    };
+
+    const handleCurrentModelTypeResult = (event: any, modelType: string) => {
+      setCurrentEmbeddingModel(modelType);
+    };
+
+    const handleCurrentModelTypeError = (event: any, error: string) => {
+      console.error('Error getting current model type:', error);
+    };
+
+    const handleIsFirstTimeResult = (event: any, isFirstTime: boolean) => {
+      if (isFirstTime) {
+        setCurrentEmbeddingModel('lightweight'); // Preselect lightweight for first time
+        setIsModelSelectionOpen(true);
+      }
+    };
+
+    const handleRebuildStarted = (event: any, data: any) => {
+      setIsRebuilding(true);
+      setRebuildProgress({ current: 0, total: 0, success: 0, errors: 0 });
+    };
+
+    const handleRebuildProgress = (event: any, progress: any) => {
+      setRebuildProgress(progress);
+    };
+
+    const handleRebuildComplete = (event: any, result: any) => {
+      setIsRebuilding(false);
+      setRebuildProgress({ current: 0, total: 0, success: 0, errors: 0 });
+      // Refresh the current items
+      ipcRenderer.send('get-recent-items');
+      if (activeTab === 'all') {
+        ipcRenderer.send('get-all-items');
+      }
+    };
+
+    const handleRebuildError = (event: any, error: any) => {
+      console.error('Rebuild error:', error);
+      setIsRebuilding(false);
+      setRebuildProgress({ current: 0, total: 0, success: 0, errors: 0 });
     };
 
     ipcRenderer.on('search-results', handleSearchResults);
@@ -92,6 +160,15 @@ const AppShell: React.FC = () => {
     ipcRenderer.on('item-add-error', handleItemAddError);
     ipcRenderer.on('item-deleted', handleItemDeleted);
     ipcRenderer.on('item-delete-error', handleItemDeleteError);
+    ipcRenderer.on('model-type-set', handleModelTypeSet);
+    ipcRenderer.on('model-type-error', handleModelTypeError);
+    ipcRenderer.on('current-model-type-result', handleCurrentModelTypeResult);
+    ipcRenderer.on('current-model-type-error', handleCurrentModelTypeError);
+    ipcRenderer.on('is-first-time-result', handleIsFirstTimeResult);
+    ipcRenderer.on('rebuild-started', handleRebuildStarted);
+    ipcRenderer.on('rebuild-progress', handleRebuildProgress);
+    ipcRenderer.on('rebuild-complete', handleRebuildComplete);
+    ipcRenderer.on('rebuild-error', handleRebuildError);
 
     return () => {
       ipcRenderer.removeListener('search-results', handleSearchResults);
@@ -101,8 +178,32 @@ const AppShell: React.FC = () => {
       ipcRenderer.removeListener('item-add-error', handleItemAddError);
       ipcRenderer.removeListener('item-deleted', handleItemDeleted);
       ipcRenderer.removeListener('item-delete-error', handleItemDeleteError);
+      ipcRenderer.removeListener('model-type-set', handleModelTypeSet);
+      ipcRenderer.removeListener('model-type-error', handleModelTypeError);
+      ipcRenderer.removeListener('current-model-type-result', handleCurrentModelTypeResult);
+      ipcRenderer.removeListener('current-model-type-error', handleCurrentModelTypeError);
+      ipcRenderer.removeListener('is-first-time-result', handleIsFirstTimeResult);
+      ipcRenderer.removeListener('rebuild-started', handleRebuildStarted);
+      ipcRenderer.removeListener('rebuild-progress', handleRebuildProgress);
+      ipcRenderer.removeListener('rebuild-complete', handleRebuildComplete);
+      ipcRenderer.removeListener('rebuild-error', handleRebuildError);
     };
   }, [searchQuery, activeTab]);
+
+  // Handle model selection modal
+  useEffect(() => {
+    const handleOpenModelSelection = (event: any) => {
+      const { currentModel } = event.detail || {};
+      setCurrentEmbeddingModel(currentModel || '');
+      setIsModelSelectionOpen(true);
+    };
+
+    window.addEventListener('openModelSelection', handleOpenModelSelection);
+
+    return () => {
+      window.removeEventListener('openModelSelection', handleOpenModelSelection);
+    };
+  }, []);
 
   useEffect(() => {
     if (searchQuery.trim()) {
@@ -162,20 +263,35 @@ const AppShell: React.FC = () => {
     setIsSettingsOpen(true);
   };
 
-  const handleSaveItem = (itemData: { type: ItemType; description: string; payload: string }) => {
-    if (editingItem) {
-      // Handle edit - you'd send an IPC to update the item
-      console.log('Editing item:', editingItem.id, itemData);
-    } else {
-      // Handle add
-      ipcRenderer.send('add-item', itemData);
+  const handleSaveItem = async (itemData: { type: ItemType; description: string; payload: string }) => {
+    try {
+      if (editingItem) {
+        // Handle edit - update the existing item
+        await ipcRenderer.invoke('update-item', editingItem.id, itemData);
+        showToastNotification('✅ Item updated successfully!');
+      } else {
+        // Handle add
+        await ipcRenderer.invoke('add-item', itemData);
+        // The 'item-added' event will be sent from backend and handled by handleItemAdded
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('❌ Frontend error in handleSaveItem:', error);
+      showToastNotification(`❌ Failed to save item: ${errorMessage}`);
     }
     setIsModalOpen(false);
     setEditingItem(null);
   };
 
-  const handleSmartAddSave = (itemData: { type: ItemType; description: string; payload: string }) => {
-    ipcRenderer.send('add-item', itemData);
+  const handleSmartAddSave = async (itemData: { type: ItemType; description: string; payload: string }) => {
+    try {
+      await ipcRenderer.invoke('add-item', itemData);
+      // The 'item-added' event will be sent from backend and handled by handleItemAdded
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('❌ Frontend error in handleSmartAddSave:', error);
+      showToastNotification(`❌ Failed to add item: ${errorMessage}`);
+    }
     setIsSmartAddOpen(false);
   };
 
@@ -183,8 +299,41 @@ const AppShell: React.FC = () => {
     setIsSmartAddOpen(false);
   };
 
+  const handleModelSelected = (modelType: string) => {
+    // Send IPC message to update the embedding model
+    ipcRenderer.send('set-model-type', modelType);
+    setCurrentEmbeddingModel(modelType);
+    setIsModelSelectionOpen(false);
+    
+    // Mark that user has selected a model (for first-time flow)
+    ipcRenderer.send('mark-model-selected', modelType);
+  };
+
+  const handleModelSelectionClose = () => {
+    setIsModelSelectionOpen(false);
+  };
+
   const handleCopyItem = (item: Item) => {
     navigator.clipboard.writeText(item.payload);
+  };
+
+  const handleImportSuccess = () => {
+    // Refresh both recent and all items after successful import
+    ipcRenderer.send('get-recent-items');
+    ipcRenderer.send('get-all-items');
+    showToastNotification('✅ Items imported and lists refreshed!');
+  };
+
+  const handleDeleteAllSuccess = () => {
+    // Clear all items from state and refresh lists
+    setItems([]);
+    setAllItems([]);
+    setFilteredItems([]);
+    setSelectedItem(null);
+    // Also refresh from backend to be sure
+    ipcRenderer.send('get-recent-items');
+    ipcRenderer.send('get-all-items');
+    showToastNotification('✅ All items deleted successfully!');
   };
 
   const handleKeyDown = (e: KeyboardEvent) => {
@@ -258,6 +407,7 @@ const AppShell: React.FC = () => {
               item={selectedItem}
               onEdit={handleEditItem}
               onCopy={handleCopyItem}
+              onDelete={handleDeleteItem}
               searchQuery={searchQuery}
             />
           </div>
@@ -286,7 +436,67 @@ const AppShell: React.FC = () => {
       {isSettingsOpen && (
         <SettingsModal
           onClose={() => setIsSettingsOpen(false)}
+          onImportSuccess={handleImportSuccess}
+          onDeleteAllSuccess={handleDeleteAllSuccess}
         />
+      )}
+
+      {isModelSelectionOpen && (
+        <ModelSelectionModal
+          isOpen={isModelSelectionOpen}
+          onClose={handleModelSelectionClose}
+          onModelSelected={handleModelSelected}
+          currentModel={currentEmbeddingModel}
+        />
+      )}
+
+      {isRebuilding && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '100%',
+          backgroundColor: 'rgba(0, 0, 0, 0.8)',
+          zIndex: 2000,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: 'white',
+          fontSize: '18px',
+          flexDirection: 'column',
+          gap: '20px'
+        }}>
+          <div>🔄 Rebuilding database for model change...</div>
+          {rebuildProgress.total > 0 && (
+            <div style={{ textAlign: 'center' }}>
+              <div>Progress: {rebuildProgress.current} / {rebuildProgress.total}</div>
+              <div>✅ Success: {rebuildProgress.success} | ❌ Errors: {rebuildProgress.errors}</div>
+              <div style={{
+                width: '300px',
+                height: '10px',
+                backgroundColor: '#333',
+                borderRadius: '5px',
+                overflow: 'hidden',
+                margin: '10px 0'
+              }}>
+                <div style={{
+                  width: `${(rebuildProgress.current / rebuildProgress.total) * 100}%`,
+                  height: '100%',
+                  backgroundColor: '#007AFF',
+                  transition: 'width 0.3s ease'
+                }}></div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Toast Notification */}
+      {showToast && (
+        <div className="toast-notification">
+          {toastMessage}
+        </div>
       )}
     </div>
   );

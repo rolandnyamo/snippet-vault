@@ -4,7 +4,7 @@ const { FuseV1Options, FuseVersion } = require('@electron/fuses');
 module.exports = {
   packagerConfig: {
     asar: {
-      unpack: '{**/node_modules/@lancedb/**/*,**/*.node}',
+      unpack: '{**/node_modules/@lancedb/**/*,**/node_modules/@tensorflow*/**/*,**/*.node}',
     },
     icon: './assets/icons/icon', // Don't include extension - Electron will pick the right one
     name: 'Snippet Vault',
@@ -13,8 +13,14 @@ module.exports = {
     // Disable code signing for CI builds to avoid "damaged" error
     // Enable this later when proper certificates are configured
     osxSign: false,
+    // Only build for Apple Silicon on macOS
+    arch: process.platform === 'darwin' ? 'arm64' : undefined,
     ignore: [
-      // Don't ignore anything - let all onnxruntime packages be included but unpacked
+      // Exclude some large TensorFlow files that aren't needed
+      /node_modules\/@tensorflow\/.*\/dist\/.*\.map$/,
+      /node_modules\/@tensorflow\/.*\/dist\/.*test.*$/,
+      /node_modules\/@tensorflow\/.*\/demo/,
+      /node_modules\/@tensorflow\/.*\/docs/,
     ],
   },
   rebuildConfig: {},
@@ -27,12 +33,17 @@ module.exports = {
   },
   makers: [
     {
-      name: '@electron-forge/maker-squirrel',
+      name: '@electron-forge/maker-wix',
       platforms: ['win32'],
       config: {
-        name: 'snippet-vault',
-        iconUrl: 'https://raw.githubusercontent.com/rolandnyamo/snippet-vault/main/assets/icons/icon.ico',
-        setupIcon: './assets/icons/icon.ico'
+        name: 'Snippet Vault',
+        description: 'A smart snippet management application',
+        manufacturer: 'Roland Nyamoga',
+        version: '1.0.0',
+        icon: './assets/icons/icon.ico',
+        ui: {
+          chooseDirectory: true
+        }
       },
     },
     {
@@ -41,24 +52,6 @@ module.exports = {
       config: {
         icon: './assets/icons/icon.icns'
       }
-    },
-    {
-      name: '@electron-forge/maker-deb',
-      platforms: ['linux'],
-      config: {
-        options: {
-          icon: './assets/icons/icon.png'
-        }
-      },
-    },
-    {
-      name: '@electron-forge/maker-rpm',
-      platforms: ['linux'],
-      config: {
-        options: {
-          icon: './assets/icons/icon.png'
-        }
-      },
     },
   ],
   plugins: [

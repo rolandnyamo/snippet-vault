@@ -5,10 +5,11 @@ process.env.ONNX_WEB = 'true';
 process.env.ONNXRUNTIME_NODE_DISABLED = 'true';
 
 import { app, BrowserWindow, dialog, ipcMain } from 'electron';
+import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-import { initializeDatabase, get_config_path, addItem, searchItems, getRecentItems, deleteItem, getAllItems, exportData, getDataPath, importData, deleteAllData, getCurrentEmbeddingModel, regenerateAllEmbeddings } from './store.js';
+import { initializeDatabase, get_config_path, addItem, searchItems, getRecentItems, deleteItem, getAllItems, exportData, getDataPath, importData, deleteAllData, getCurrentEmbeddingModel, regenerateAllEmbeddings, getAvailableModels, setEmbeddingModelType, getCurrentModelType, canLoadTensorFlow, resetDatabase, updateItem } from './store.js';
 
 // Get the current directory for ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -33,6 +34,9 @@ const createWindow = () => {
     },
   });
 
+  // Store reference globally for rebuild notifications
+  globalThis.mainWindow = mainWindow;
+
   // and load the index.html of the app.
   const isDev = process.env.NODE_ENV === 'development';
   if (isDev) {
@@ -43,6 +47,8 @@ const createWindow = () => {
 
   // Open the DevTools.
   mainWindow.webContents.openDevTools();
+
+  return mainWindow;
 };
 
 // This method will be called when Electron has finished
@@ -53,14 +59,24 @@ app.whenReady().then(async () => {
   await initializeDatabase(configPath, dialog, app);
   createWindow();
 
-  ipcMain.on('add-item', async (event, item) => {
-    const configPath = get_config_path(app.getPath('userData'));
+  ipcMain.handle('add-item', async (event, itemData) => {
     try {
-      await addItem(item, configPath);
-      event.sender.send('item-added', item);
+      await addItem(itemData, configPath);
+      mainWindow?.webContents.send('item-added');
     } catch (error) {
-      console.error('Error adding item:', error);
-      event.sender.send('item-add-error', error.message);
+      console.error('Error in add-item IPC handler:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('update-item', async (event, itemId, updates) => {
+    try {
+      const updatedItem = await updateItem(itemId, updates, configPath);
+      mainWindow?.webContents.send('item-updated', updatedItem);
+      return updatedItem;
+    } catch (error) {
+      console.error('Error updating item:', error);
+      throw error;
     }
   });
 
@@ -111,14 +127,40 @@ app.whenReady().then(async () => {
   });
 
   ipcMain.on('show-item-in-folder', async (event, path) => {
-    const { shell } = require('electron');
-    shell.showItemInFolder(path);
+    try {
+      const { shell } = await import('electron');
+      const fs = await import('fs');
+      const pathModule = await import('path');
+      
+      // Check if path exists
+      if (!fs.existsSync(path)) {
+        console.error('Path does not exist:', path);
+        return;
+      }
+      
+      // If it's a file, show its parent directory
+      const stats = fs.statSync(path);
+      if (stats.isFile()) {
+        const parentDir = pathModule.dirname(path);
+        shell.showItemInFolder(parentDir);
+      } else {
+        shell.showItemInFolder(path);
+      }
+    } catch (error) {
+      console.error('Error showing item in folder:', error);
+    }
   });
 
   ipcMain.on('import-data', async (event, { data, format }) => {
     try {
       const configPath = get_config_path(app.getPath('userData'));
-      const result = await importData(configPath, data, format);
+      
+      // Progress callback to send updates to frontend
+      const progressCallback = (progress) => {
+        event.sender.send('import-data-progress', progress);
+      };
+      
+      const result = await importData(configPath, data, format, progressCallback);
       event.sender.send('import-data-result', result);
     } catch (error) {
       console.error('Error importing data:', error);
@@ -155,6 +197,87 @@ app.whenReady().then(async () => {
     } catch (error) {
       console.error('Error regenerating embeddings:', error);
       event.sender.send('regenerate-embeddings-error', error.message);
+    }
+  });
+
+  ipcMain.on('reset-database', async (event) => {
+    try {
+      const configPath = get_config_path(app.getPath('userData'));
+      const result = await resetDatabase(configPath);
+      event.sender.send('reset-database-result', result);
+    } catch (error) {
+      console.error('Error resetting database:', error);
+      event.sender.send('reset-database-error', error.message);
+    }
+  });
+
+  // Model selection IPC handlers
+  ipcMain.on('get-available-models', async (event) => {
+    try {
+      const models = getAvailableModels();
+      event.sender.send('available-models-result', models);
+    } catch (error) {
+      event.sender.send('available-models-error', error.message);
+    }
+  });
+
+  ipcMain.on('set-model-type', async (event, modelType) => {
+    try {
+      const result = await setEmbeddingModelType(modelType);
+      event.sender.send('model-type-set', result);
+    } catch (error) {
+      event.sender.send('model-type-error', error.message);
+    }
+  });
+
+  ipcMain.on('get-current-model-type', async (event) => {
+    try {
+      const modelType = getCurrentModelType();
+      event.sender.send('current-model-type-result', modelType);
+    } catch (error) {
+      event.sender.send('current-model-type-error', error.message);
+    }
+  });
+
+  ipcMain.on('can-load-tensorflow', async (event) => {
+    try {
+      const canLoad = await canLoadTensorFlow();
+      event.sender.send('can-load-tensorflow-result', canLoad);
+    } catch (error) {
+      event.sender.send('can-load-tensorflow-error', error.message);
+    }
+  });
+
+  ipcMain.on('is-first-time', async (event) => {
+    try {
+      const configPath = get_config_path(app.getPath('userData'));
+      const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      const isFirstTime = !config.hasSelectedModel;
+      event.sender.send('is-first-time-result', isFirstTime);
+    } catch (error) {
+      // If config doesn't exist or can't be read, it's first time
+      event.sender.send('is-first-time-result', true);
+    }
+  });
+
+  ipcMain.on('mark-model-selected', async (event, modelType) => {
+    try {
+      const configPath = get_config_path(app.getPath('userData'));
+      let config = {};
+      try {
+        config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      } catch (e) {
+        // File doesn't exist or is corrupted, start fresh
+      }
+      
+      config.hasSelectedModel = true;
+      config.selectedModel = modelType;
+      
+      fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+      
+      event.sender.send('model-selection-marked');
+    } catch (error) {
+      event.sender.send('model-selection-mark-error', error.message);
     }
   });
 

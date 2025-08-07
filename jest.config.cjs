@@ -5,6 +5,6 @@ module.exports = {
     '^.+\.js$': 'babel-jest',
   },
   transformIgnorePatterns: [
-    '/node_modules/',
+    '/node_modules/(?!(@lancedb|vectordb)/)',
   ],
 };
