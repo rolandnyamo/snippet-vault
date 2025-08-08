@@ -36,7 +36,7 @@ const mockEmbeddingManager = {
   canLoadTensorFlow: jest.fn().mockResolvedValue(false),
 };
 
-jest.doMock('../hybrid-embeddings.js', () => ({
+jest.doMock('../embeddings/index.js', () => ({
   embeddingManager: mockEmbeddingManager,
   EMBEDDING_MODELS: {
     LIGHTWEIGHT: 'lightweight',
@@ -68,7 +68,7 @@ describe('store', () => {
   it('should create a new config file if one does not exist', async () => {
     mockFs.existsSync.mockReturnValue(false);
 
-    const { initializeDatabase, get_config_path } = await import('../store.js');
+    const { initializeDatabase, get_config_path } = await import('../store/index.js');
     
     const configPath = get_config_path(mockApp.getPath('userData'));
     await initializeDatabase(configPath, mockDialog, mockApp);
@@ -84,7 +84,7 @@ describe('store', () => {
     mockFs.existsSync.mockReturnValue(true);
     mockFs.readFileSync.mockReturnValue(JSON.stringify({ storage_path: '/existing/path' }));
 
-    const { initializeDatabase, get_config_path } = await import('../store.js');
+    const { initializeDatabase, get_config_path } = await import('../store/index.js');
 
     const configPath = get_config_path(mockApp.getPath('userData'));
     await initializeDatabase(configPath, mockDialog, mockApp);
@@ -95,7 +95,7 @@ describe('store', () => {
   it('should create default storage path when none exists', async () => {
     mockFs.existsSync.mockReturnValue(false);
 
-    const { initializeDatabase, get_config_path } = await import('../store.js');
+    const { initializeDatabase, get_config_path } = await import('../store/index.js');
     
     const configPath = get_config_path(mockApp.getPath('userData'));
     await initializeDatabase(configPath, mockDialog, mockApp);

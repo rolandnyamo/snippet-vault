@@ -9,7 +9,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-import { initializeDatabase, get_config_path, addItem, searchItems, getRecentItems, deleteItem, getAllItems, exportData, getDataPath, importData, deleteAllData, getCurrentEmbeddingModel, regenerateAllEmbeddings, getAvailableModels, setEmbeddingModelType, getCurrentModelType, canLoadTensorFlow, resetDatabase, updateItem } from './store.js';
+import { initializeDatabase, get_config_path, addItem, searchItems, getRecentItems, deleteItem, getAllItems, exportData, getDataPath, importData, deleteAllData, getCurrentEmbeddingModel, regenerateAllEmbeddings, getAvailableModels, setEmbeddingModelType, getCurrentModelType, canLoadTensorFlow, resetDatabase, updateItem } from './store/index.js';
 
 // Get the current directory for ES modules
 const __filename = fileURLToPath(import.meta.url);
