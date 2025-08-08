@@ -8,3 +8,4 @@ out/
 *.deb
 *.rpm
 *.zip
+.DS_Store
