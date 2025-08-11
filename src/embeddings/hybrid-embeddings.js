@@ -17,14 +17,14 @@ try {
   }
 } catch (error) {
   // Fallback for test environment or other issues
-  __filename = 'src/hybrid-embeddings.js';
-  __dirname = path.resolve('src');
+  __filename = 'src/embeddings/hybrid-embeddings.js';
+  __dirname = path.resolve('src/embeddings');
 }
 
 // Simple preferences manager (avoiding electron-store for now)
 class PreferencesManager {
   constructor() {
-    this.prefsPath = path.join(__dirname, '..', 'user-preferences.json');
+    this.prefsPath = path.join(__dirname, '..', '..', 'user-preferences.json');
   }
 
   loadPreferences() {
