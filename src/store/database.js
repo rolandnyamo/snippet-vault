@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import lancedb from '@lancedb/lancedb';
-import { getCurrentEmbeddingModel, createZeroVector, rebuildEmbeddingsTable } from './embeddings.js';
+import { getCurrentEmbeddingModel, createZeroVector, rebuildEmbeddingsTable } from './embeddings/index.js';
 
 export async function initializeDatabase(configPath, dialog, app) {
   let config = {};

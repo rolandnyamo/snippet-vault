@@ -1,7 +1,7 @@
 import fs from 'fs';
 import lancedb from '@lancedb/lancedb';
 import { v4 as uuidv4 } from 'uuid';
-import { generateEmbedding, getCurrentEmbeddingModel, ensureEmbeddingTableCompatible, ensureEmbeddingCurrent, createZeroVector } from './embeddings.js';
+import { generateEmbedding, getCurrentEmbeddingModel, ensureEmbeddingTableCompatible, ensureEmbeddingCurrent, createZeroVector } from './embeddings/index.js';
 
 export async function addItem(item, configPath) {
   try {
@@ -10,8 +10,9 @@ export async function addItem(item, configPath) {
     
     const config = JSON.parse(fs.readFileSync(configPath));
     const db = await lancedb.connect(config.storage_path);
-    
-    // Generate embedding with database compatibility check
+
+    // Ensure embedding table is compatible before generating embedding
+    await ensureEmbeddingTableCompatible(db, configPath);
     const embedding = await generateEmbedding(item.payload + ' ' + item.description, db, configPath);
     
     // Add to raw table (backup/export source)
@@ -72,6 +73,7 @@ export async function updateItem(itemId, updates, configPath) {
     // If payload or description changed, regenerate embedding
     if (updates.payload !== undefined || updates.description !== undefined) {
       const newText = updatedItem.payload + ' ' + updatedItem.description;
+      await ensureEmbeddingTableCompatible(db, configPath);
       const newEmbedding = await generateEmbedding(newText, db, configPath);
       
       // Update embedding
@@ -435,6 +437,8 @@ export async function importData(configPath, importData, format = 'json', progre
     const db = await lancedb.connect(config.storage_path);
     const rawTable = await db.openTable('items_raw');
     const embeddingTable = await db.openTable('items_embeddings');
+
+    await ensureEmbeddingTableCompatible(db, configPath);
     
     let successCount = 0;
     let errorCount = 0;
