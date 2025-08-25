@@ -11,6 +11,15 @@ body {
   font-size: 14px;
   line-height: 1.5;
   color: #333;
+
+/* Readonly, disabled input styling (for Full URL field) */
+.readonly-input[disabled] {
+  background-color: #f3f3f3;
+  color: #666;
+  border: 1px solid #ddd;
+  padding: 6px 8px;
+  border-radius: 4px;
+}
   background-color: #f5f5f5;
   overflow: hidden;
 }
@@ -627,6 +636,53 @@ body {
 
 .action-button.secondary:hover {
   background: #e0e0e0;
+}
+
+/* Loading button styles */
+.action-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.action-button.loading {
+  position: relative;
+  color: transparent;
+}
+
+.action-button.loading:hover {
+  background: #007AFF; /* Keep same color when loading */
+}
+
+.loading-spinner {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 16px;
+  height: 16px;
+  border: 2px solid transparent;
+  border-top: 2px solid white;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: translate(-50%, -50%) rotate(0deg); }
+  100% { transform: translate(-50%, -50%) rotate(360deg); }
+}
+
+/* Type option disabled state */
+.type-option.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* Input disabled state */
+.smart-input:disabled {
+  background: #f5f5f5;
+  color: #999;
+  cursor: not-allowed;
 }
 
 /* Settings Modal */

@@ -33,7 +33,7 @@ const mockEmbeddingManager = {
   canLoadTensorFlow: jest.fn().mockResolvedValue(false),
 };
 
-jest.doMock('../hybrid-embeddings.js', () => ({
+jest.doMock('../embeddings/index.js', () => ({
   embeddingManager: mockEmbeddingManager,
   EMBEDDING_MODELS: {
     LIGHTWEIGHT: 'lightweight',
@@ -75,7 +75,7 @@ describe('addItem', () => {
 
     mockFs.readFileSync.mockReturnValue(JSON.stringify({ storage_path: '/test/db' }));
 
-    const { addItem } = await import('../store.js');
+    const { addItem } = await import('../store/index.js');
     const item = {
       type: 'link',
       payload: 'https://example.com',

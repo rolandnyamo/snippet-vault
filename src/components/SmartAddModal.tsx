@@ -3,13 +3,14 @@ import { ItemType } from '../types';
 import { useAutosize } from '../hooks/useAutosize';
 
 interface SmartAddModalProps {
-  onSave: (itemData: { type: ItemType; description: string; payload: string }) => void;
+  onSave: (itemData: { type: ItemType; description: string; payload: string }) => Promise<void>;
   onCancel: () => void;
+  isSaving?: boolean;
 }
 
 type Step = 'payload' | 'type-selection' | 'description';
 
-const SmartAddModal: React.FC<SmartAddModalProps> = ({ onSave, onCancel }) => {
+const SmartAddModal: React.FC<SmartAddModalProps> = ({ onSave, onCancel, isSaving = false }) => {
   const [step, setStep] = useState<Step>('payload');
   const [payload, setPayload] = useState('');
   const [description, setDescription] = useState('');
@@ -82,17 +83,24 @@ const SmartAddModal: React.FC<SmartAddModalProps> = ({ onSave, onCancel }) => {
     }, 100);
   };
 
-  const handleDescriptionSubmit = () => {
-    if (!description.trim() || !detectedType) return;
+  const handleDescriptionSubmit = async () => {
+    if (!description.trim() || !detectedType || isSaving) return;
     
-    onSave({
-      type: detectedType,
-      description: description.trim(),
-      payload: payload.trim()
-    });
+    try {
+      await onSave({
+        type: detectedType,
+        description: description.trim(),
+        payload: payload.trim()
+      });
+    } catch (error) {
+      // Error handling is done in the parent component
+      console.error('Error saving item:', error);
+    }
   };
 
   const handleCancel = () => {
+    if (isSaving) return; // Prevent closing while saving
+    
     const hasContent = payload.trim() || description.trim();
     if (hasContent) {
       const confirmed = window.confirm(
@@ -104,6 +112,8 @@ const SmartAddModal: React.FC<SmartAddModalProps> = ({ onSave, onCancel }) => {
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (isSaving) return; // Prevent keyboard actions while saving
+    
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       if (step === 'payload') {
@@ -118,7 +128,7 @@ const SmartAddModal: React.FC<SmartAddModalProps> = ({ onSave, onCancel }) => {
   };
 
   const handleBackdropClick = (e: React.MouseEvent) => {
-    if (e.target === e.currentTarget) {
+    if (e.target === e.currentTarget && !isSaving) {
       handleCancel();
     }
   };
@@ -133,7 +143,7 @@ const SmartAddModal: React.FC<SmartAddModalProps> = ({ onSave, onCancel }) => {
   const getPlaceholder = () => {
     switch (step) {
       case 'payload':
-        return 'Paste your URL or KQL query here...';
+        return 'Paste your Azure Data Explorer URL and KQL query, or just a KQL query...';
       case 'description':
         return 'Enter a description...';
       default:
@@ -172,12 +182,14 @@ const SmartAddModal: React.FC<SmartAddModalProps> = ({ onSave, onCancel }) => {
               placeholder={getPlaceholder()}
               className="smart-input payload-input"
               rows={3}
+              disabled={isSaving}
             />
             <div className="step-actions">
               <button 
                 type="button" 
                 className="action-button secondary"
                 onClick={onCancel}
+                disabled={isSaving}
               >
                 Cancel
               </button>
@@ -185,7 +197,7 @@ const SmartAddModal: React.FC<SmartAddModalProps> = ({ onSave, onCancel }) => {
                 type="button" 
                 className="action-button primary"
                 onClick={handlePayloadSubmit}
-                disabled={!payload.trim()}
+                disabled={!payload.trim() || isSaving}
               >
                 Next
               </button>
@@ -201,16 +213,18 @@ const SmartAddModal: React.FC<SmartAddModalProps> = ({ onSave, onCancel }) => {
             </div>
             <div className="type-selection">
               <button 
-                className="type-option"
-                onClick={() => handleTypeSelection('link')}
+                className={`type-option ${isSaving ? 'disabled' : ''}`}
+                onClick={() => !isSaving && handleTypeSelection('link')}
+                disabled={isSaving}
               >
                 <div className="type-icon">🔗</div>
                 <div className="type-label">Link/URL</div>
                 <div className="type-description">A web link or URL</div>
               </button>
               <button 
-                className="type-option"
-                onClick={() => handleTypeSelection('kusto_query')}
+                className={`type-option ${isSaving ? 'disabled' : ''}`}
+                onClick={() => !isSaving && handleTypeSelection('kusto_query')}
+                disabled={isSaving}
               >
                 <div className="type-icon">📊</div>
                 <div className="type-label">KQL Query</div>
@@ -228,6 +242,7 @@ const SmartAddModal: React.FC<SmartAddModalProps> = ({ onSave, onCancel }) => {
               </div>
               <div className="preview-text">{payload}</div>
             </div>
+            
             <input
               ref={descriptionRef}
               type="text"
@@ -236,22 +251,31 @@ const SmartAddModal: React.FC<SmartAddModalProps> = ({ onSave, onCancel }) => {
               onKeyDown={handleKeyDown}
               placeholder={getPlaceholder()}
               className="smart-input description-input"
+              disabled={isSaving}
             />
             <div className="step-actions">
               <button 
                 type="button" 
                 className="action-button secondary"
                 onClick={() => setStep('payload')}
+                disabled={isSaving}
               >
                 Back
               </button>
               <button 
                 type="button" 
-                className="action-button primary"
+                className={`action-button primary ${isSaving ? 'loading' : ''}`}
                 onClick={handleDescriptionSubmit}
-                disabled={!description.trim()}
+                disabled={!description.trim() || isSaving}
               >
-                Save
+                {isSaving ? (
+                  <>
+                    <span className="loading-spinner"></span>
+                    Saving...
+                  </>
+                ) : (
+                  'Save'
+                )}
               </button>
             </div>
           </div>

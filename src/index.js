@@ -9,7 +9,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-import { initializeDatabase, get_config_path, addItem, searchItems, getRecentItems, deleteItem, getAllItems, exportData, getDataPath, importData, deleteAllData, getCurrentEmbeddingModel, regenerateAllEmbeddings, getAvailableModels, setEmbeddingModelType, getCurrentModelType, canLoadTensorFlow, resetDatabase, updateItem } from './store.js';
+import { initializeDatabase, get_config_path, addItem, searchItems, getRecentItems, deleteItem, getAllItems, exportData, getDataPath, importData, deleteAllData, getCurrentEmbeddingModel, regenerateAllEmbeddings, getAvailableModels, setEmbeddingModelType, getCurrentModelType, canLoadTensorFlow, resetDatabase, updateItem } from './store/index.js';
 
 // Get the current directory for ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -38,15 +38,18 @@ const createWindow = () => {
   globalThis.mainWindow = mainWindow;
 
   // and load the index.html of the app.
-  const isDev = process.env.NODE_ENV === 'development';
+  // Determine development/local mode. Treat non-packaged apps as development as well
+  const isDev = (process.env.NODE_ENV === 'development') || (!app.isPackaged);
   if (isDev) {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
   } else {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
   }
 
-  // Open the DevTools.
-  mainWindow.webContents.openDevTools();
+  // Open the DevTools in development/local mode
+  if (isDev) {
+    mainWindow.webContents.openDevTools();
+  }
 
   return mainWindow;
 };
