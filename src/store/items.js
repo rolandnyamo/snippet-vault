@@ -513,7 +513,8 @@ export async function importData(configPath, importData, format = 'json', progre
     
     for (let i = 0; i < items.length; i++) {
       try {
-        const item = items[i];
+  // Normalize imported item to ensure clean display and consistent storage
+  const item = normalizeImportedItem(items[i]);
         const itemId = item.id || uuidv4(); // Use existing ID if provided
         const now = new Date().toISOString();
         const embedding = await generateEmbedding(item.payload + ' ' + item.description, db, configPath);
@@ -567,6 +568,41 @@ export async function importData(configPath, importData, format = 'json', progre
     console.error('Error stack:', error.stack);
     throw new Error(`Failed to import data: ${error.message}`);
   }
+}
+
+// Normalize imported item to improve display and consistency
+function normalizeImportedItem(item) {
+  const out = { ...item };
+  // Basic trims
+  if (typeof out.description === 'string') out.description = out.description.trim();
+  if (typeof out.payload === 'string') out.payload = out.payload.replace(/\r\n/g, '\n').trim();
+
+  // For kusto_query, if first non-empty line is a URL, keep it; collapse excessive whitespace in query body
+  if (out.type === 'kusto_query' && typeof out.payload === 'string') {
+    const lines = out.payload.split('\n');
+    const firstIdx = lines.findIndex(l => l.trim().length > 0);
+    if (firstIdx >= 0) {
+      const firstLine = lines[firstIdx].trim();
+      const looksLikeUrl = /^https?:\/\//i.test(firstLine);
+      if (looksLikeUrl) {
+        // Keep as-is: first line URL and body lines following
+        const body = lines.slice(firstIdx + 1).join('\n').trim();
+        // Normalize body whitespace lightly (collapse trailing spaces)
+        const normalizedBody = body.replace(/[\t ]+$/gm, '');
+        out.payload = `${firstLine}\n${normalizedBody}`.trim();
+      } else {
+        // No URL present: normalize body whitespace only
+        out.payload = out.payload.replace(/[\t ]+$/gm, '');
+      }
+    }
+  }
+
+  // For links, ensure payload is a clean URL (trim only)
+  if (out.type === 'link' && typeof out.payload === 'string') {
+    out.payload = out.payload.trim();
+  }
+
+  return out;
 }
 
 export async function deleteAllData(configPath) {
