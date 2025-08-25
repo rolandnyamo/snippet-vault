@@ -38,15 +38,18 @@ const createWindow = () => {
   globalThis.mainWindow = mainWindow;
 
   // and load the index.html of the app.
-  const isDev = process.env.NODE_ENV === 'development';
+  // Determine development/local mode. Treat non-packaged apps as development as well
+  const isDev = (process.env.NODE_ENV === 'development') || (!app.isPackaged);
   if (isDev) {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
   } else {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
   }
 
-  // Open the DevTools.
-  mainWindow.webContents.openDevTools();
+  // Open the DevTools in development/local mode
+  if (isDev) {
+    mainWindow.webContents.openDevTools();
+  }
 
   return mainWindow;
 };
