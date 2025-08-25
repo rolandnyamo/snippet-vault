@@ -21,6 +21,7 @@ const AppShell: React.FC = () => {
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSmartAddOpen, setIsSmartAddOpen] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isModelSelectionOpen, setIsModelSelectionOpen] = useState(false);
   const [currentEmbeddingModel, setCurrentEmbeddingModel] = useState<string>('');
@@ -264,6 +265,7 @@ const AppShell: React.FC = () => {
   };
 
   const handleSaveItem = async (itemData: { type: ItemType; description: string; payload: string }) => {
+    setIsSaving(true);
     try {
       if (editingItem) {
         // Handle edit - update the existing item
@@ -274,29 +276,35 @@ const AppShell: React.FC = () => {
         await ipcRenderer.invoke('add-item', itemData);
         // The 'item-added' event will be sent from backend and handled by handleItemAdded
       }
+      setIsModalOpen(false);
+      setEditingItem(null);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       console.error('❌ Frontend error in handleSaveItem:', error);
       showToastNotification(`❌ Failed to save item: ${errorMessage}`);
+    } finally {
+      setIsSaving(false);
     }
-    setIsModalOpen(false);
-    setEditingItem(null);
   };
 
   const handleSmartAddSave = async (itemData: { type: ItemType; description: string; payload: string }) => {
+    setIsSaving(true);
     try {
       await ipcRenderer.invoke('add-item', itemData);
       // The 'item-added' event will be sent from backend and handled by handleItemAdded
+      setIsSmartAddOpen(false);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       console.error('❌ Frontend error in handleSmartAddSave:', error);
       showToastNotification(`❌ Failed to add item: ${errorMessage}`);
+    } finally {
+      setIsSaving(false);
     }
-    setIsSmartAddOpen(false);
   };
 
   const handleSmartAddCancel = () => {
     setIsSmartAddOpen(false);
+    setIsSaving(false); // Reset saving state on cancel
   };
 
   const handleModelSelected = (modelType: string) => {
@@ -422,7 +430,9 @@ const AppShell: React.FC = () => {
           onCancel={() => {
             setIsModalOpen(false);
             setEditingItem(null);
+            setIsSaving(false); // Reset saving state on cancel
           }}
+          isSaving={isSaving}
         />
       )}
 
@@ -430,6 +440,7 @@ const AppShell: React.FC = () => {
         <SmartAddModal
           onSave={handleSmartAddSave}
           onCancel={handleSmartAddCancel}
+          isSaving={isSaving}
         />
       )}
 

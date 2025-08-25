@@ -4,12 +4,13 @@ import { useAutosize } from '../hooks/useAutosize';
 
 interface ItemModalProps {
   item?: Item | null;
-  onSave: (itemData: { type: ItemType; description: string; payload: string }) => void;
+  onSave: (itemData: { type: ItemType; description: string; payload: string }) => Promise<void>;
   onCancel: () => void;
   onDelete?: (itemId: string) => void;
+  isSaving?: boolean;
 }
 
-const ItemModal: React.FC<ItemModalProps> = ({ item, onSave, onCancel, onDelete }) => {
+const ItemModal: React.FC<ItemModalProps> = ({ item, onSave, onCancel, onDelete, isSaving = false }) => {
   const [type, setType] = useState<ItemType>('link');
   const [description, setDescription] = useState('');
   const [payload, setPayload] = useState('');
@@ -45,18 +46,23 @@ const ItemModal: React.FC<ItemModalProps> = ({ item, onSave, onCancel, onDelete 
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!validateForm()) {
+    if (!validateForm() || isSaving) {
       return;
     }
 
-    onSave({
-      type,
-      description: description.trim(),
-      payload: payload.trim()
-    });
+    try {
+      await onSave({
+        type,
+        description: description.trim(),
+        payload: payload.trim()
+      });
+    } catch (error) {
+      // Error handling is done in the parent component
+      console.error('Error saving item:', error);
+    }
   };
 
   const handleDelete = () => {
@@ -72,6 +78,8 @@ const ItemModal: React.FC<ItemModalProps> = ({ item, onSave, onCancel, onDelete 
   };
 
   const handleCancel = useCallback(() => {
+    if (isSaving) return; // Prevent closing while saving
+    
     // Check if there are unsaved changes by comparing with original values
     const originalDescription = item?.description || '';
     const originalPayload = item?.payload || '';
@@ -91,7 +99,7 @@ const ItemModal: React.FC<ItemModalProps> = ({ item, onSave, onCancel, onDelete 
     }
     
     onCancel();
-  }, [description, payload, item, onCancel]);
+  }, [description, payload, item, onCancel, isSaving]);
 
   // Handle ESC key globally when modal is open
   useEffect(() => {
@@ -140,6 +148,7 @@ const ItemModal: React.FC<ItemModalProps> = ({ item, onSave, onCancel, onDelete 
                   value="link"
                   checked={type === 'link'}
                   onChange={(e) => setType(e.target.value as ItemType)}
+                  disabled={isSaving}
                 />
                 Link
               </label>
@@ -150,6 +159,7 @@ const ItemModal: React.FC<ItemModalProps> = ({ item, onSave, onCancel, onDelete 
                   value="kusto_query"
                   checked={type === 'kusto_query'}
                   onChange={(e) => setType(e.target.value as ItemType)}
+                  disabled={isSaving}
                 />
                 Kusto Query
               </label>
@@ -167,6 +177,7 @@ const ItemModal: React.FC<ItemModalProps> = ({ item, onSave, onCancel, onDelete 
               onChange={(e) => setDescription(e.target.value)}
               className={`form-input ${errors.description ? 'error' : ''}`}
               placeholder="Enter a description..."
+              disabled={isSaving}
             />
             {errors.description && (
               <span className="error-message">{errors.description}</span>
@@ -185,6 +196,7 @@ const ItemModal: React.FC<ItemModalProps> = ({ item, onSave, onCancel, onDelete 
               className={`form-textarea ${errors.payload ? 'error' : ''}`}
               placeholder={type === 'link' ? 'https://...' : 'Enter your KQL query...'}
               rows={3}
+              disabled={isSaving}
             />
             {errors.payload && (
               <span className="error-message">{errors.payload}</span>
@@ -211,14 +223,23 @@ const ItemModal: React.FC<ItemModalProps> = ({ item, onSave, onCancel, onDelete 
                 type="button" 
                 className="action-button secondary"
                 onClick={handleCancel}
+                disabled={isSaving}
               >
                 Cancel
               </button>
               <button 
                 type="submit" 
-                className="action-button primary"
+                className={`action-button primary ${isSaving ? 'loading' : ''}`}
+                disabled={isSaving}
               >
-                Save
+                {isSaving ? (
+                  <>
+                    <span className="loading-spinner"></span>
+                    Saving...
+                  </>
+                ) : (
+                  'Save'
+                )}
               </button>
             </div>
           </div>
