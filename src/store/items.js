@@ -98,6 +98,69 @@ export async function updateItem(itemId, updates, configPath) {
   }
 }
 
+// Helper function to normalize text for fuzzy searching
+function normalizeForSearch(text) {
+  return text
+    .toLowerCase()
+    .replace(/\s+/g, '') // Remove all spaces
+    .replace(/[_-]/g, '') // Remove underscores and hyphens
+    .trim();
+}
+
+// Helper function to create fuzzy search patterns
+function createSearchPatterns(query) {
+  const normalized = normalizeForSearch(query);
+  const patterns = [
+    // Exact match (original behavior)
+    query.toLowerCase(),
+    // Normalized match (no spaces/underscores/hyphens)
+    normalized,
+    // Split into words and match each
+    ...query.toLowerCase().split(/\s+/).filter(word => word.length > 1)
+  ];
+  
+  return [...new Set(patterns)]; // Remove duplicates
+}
+
+// Enhanced fuzzy text search function
+async function fuzzyTextSearch(rawTable, query) {
+  const patterns = createSearchPatterns(query);
+  const allResults = new Map();
+
+  // Try each pattern and collect results
+  for (const pattern of patterns) {
+    const results = await rawTable
+      .query()
+      .where(`LOWER(description) LIKE '%${pattern}%' OR LOWER(payload) LIKE '%${pattern}%'`)
+      .toArray();
+    
+    // Add to results map (deduplicates by id)
+    results.forEach(item => {
+      if (!allResults.has(item.id)) {
+        allResults.set(item.id, item);
+      }
+    });
+  }
+
+  // Also try normalized field matching for common patterns
+  // This handles cases like "resourceType" vs "resource type"
+  const normalizedQuery = normalizeForSearch(query);
+  if (normalizedQuery.length > 2) {
+    const normalizedResults = await rawTable
+      .query()
+      .where(`REPLACE(REPLACE(REPLACE(LOWER(description), ' ', ''), '_', ''), '-', '') LIKE '%${normalizedQuery}%' OR REPLACE(REPLACE(REPLACE(LOWER(payload), ' ', ''), '_', ''), '-', '') LIKE '%${normalizedQuery}%'`)
+      .toArray();
+    
+    normalizedResults.forEach(item => {
+      if (!allResults.has(item.id)) {
+        allResults.set(item.id, item);
+      }
+    });
+  }
+
+  return Array.from(allResults.values());
+}
+
 export async function searchItems(query, configPath) {
   const config = JSON.parse(fs.readFileSync(configPath));
   const db = await lancedb.connect(config.storage_path);
@@ -116,12 +179,8 @@ export async function searchItems(query, configPath) {
     const rawTable = await db.openTable('items_raw');
     const embeddingTable = await db.openTable('items_embeddings');
 
-    // Get all raw items that match text search
-    const searchPattern = query.toLowerCase();
-    const rawResults = await rawTable
-      .query()
-      .where(`LOWER(description) LIKE '%${searchPattern}%' OR LOWER(payload) LIKE '%${searchPattern}%'`)
-      .toArray();
+    // Get all raw items that match text search with fuzzy matching
+    const rawResults = await fuzzyTextSearch(rawTable, query);
 
     // For each result, get/update embedding and calculate similarity
     const results = [];
