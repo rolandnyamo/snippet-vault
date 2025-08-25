@@ -133,7 +133,7 @@ const SmartAddModal: React.FC<SmartAddModalProps> = ({ onSave, onCancel }) => {
   const getPlaceholder = () => {
     switch (step) {
       case 'payload':
-        return 'Paste your URL or KQL query here...';
+        return 'Paste your Azure Data Explorer URL and KQL query, or just a KQL query...';
       case 'description':
         return 'Enter a description...';
       default:
@@ -228,6 +228,7 @@ const SmartAddModal: React.FC<SmartAddModalProps> = ({ onSave, onCancel }) => {
               </div>
               <div className="preview-text">{payload}</div>
             </div>
+            
             <input
               ref={descriptionRef}
               type="text"

@@ -35,6 +35,9 @@ export async function addItem(item, configPath) {
       created_at: now,
     }]);
     
+    console.log(`✅ Successfully added item with ID: ${itemId}`);
+    return { id: itemId, ...item, created_at: now, last_accessed_at: now };
+    
   } catch (error) {
     console.error('❌ ERROR in addItem:', error);
     throw new Error(`Failed to add item: ${error.message}`);
