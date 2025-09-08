@@ -356,10 +356,17 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ item, onEdit, onCopy, onDelet
                   borderRadius: '4px'
                 }}
                 onError={(e) => {
-                  (e.target as HTMLImageElement).style.display = 'none';
-                  const errorDiv = document.createElement('div');
-                  errorDiv.innerHTML = `<span style="color: #666;">Image not found: ${item.payload}</span>`;
-                  (e.target as HTMLImageElement).parentNode?.appendChild(errorDiv);
+                  const img = e.target as HTMLImageElement;
+                  img.style.display = 'none';
+                  
+                  // Check if error message already exists to prevent duplicates
+                  const parent = img.parentNode as HTMLElement;
+                  if (!parent?.querySelector('.image-error-message')) {
+                    const errorDiv = document.createElement('div');
+                    errorDiv.className = 'image-error-message';
+                    errorDiv.innerHTML = `<span style="color: #666;">Image not found: ${item.payload}</span>`;
+                    parent?.appendChild(errorDiv);
+                  }
                 }}
               />
               <div style={{ marginTop: '8px', fontSize: '12px', color: '#666' }}>

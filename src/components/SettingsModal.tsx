@@ -38,16 +38,14 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose, onImportSuccess,
       setCurrentModelType(modelType);
     };
 
-    const handleExportResult = (event: any, data: string, format: string) => {
+    const handleExportResult = (event: any, zipBuffer: any) => {
       setIsExporting(false);
-      // Create and download file
-      const blob = new Blob([data], { 
-        type: format === 'csv' ? 'text/csv' : 'application/json' 
-      });
+      // Create and download zip file
+      const blob = new Blob([zipBuffer], { type: 'application/zip' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `snippet-vault-export.${format}`;
+      a.download = `snippet-vault-export.zip`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -135,26 +133,37 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose, onImportSuccess,
     };
   }, []);
 
-  const handleExport = (format: 'json' | 'csv') => {
+  const handleExport = () => {
     setIsExporting(true);
-    ipcRenderer.send('export-data', format);
+    ipcRenderer.send('export-data');
   };
 
   const handleImport = () => {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = '.json,.csv';
+    input.accept = '.zip,.json,.csv'; // Accept zip files and legacy formats
     input.onchange = (event: any) => {
       const file = event.target.files[0];
       if (file) {
-        const reader = new FileReader();
-        reader.onload = (e: any) => {
-          const data = e.target.result;
-          const format = file.name.endsWith('.csv') ? 'csv' : 'json';
-          setIsImporting(true);
-          ipcRenderer.send('import-data', { data, format });
-        };
-        reader.readAsText(file);
+        if (file.name.endsWith('.zip')) {
+          // For zip files, read as ArrayBuffer and pass the binary data
+          const reader = new FileReader();
+          reader.onload = (e: any) => {
+            const arrayBuffer = e.target.result;
+            setIsImporting(true);
+            ipcRenderer.send('import-data', { zipData: arrayBuffer });
+          };
+          reader.readAsArrayBuffer(file);
+        } else {
+          // For legacy files, read content as text
+          const reader = new FileReader();
+          reader.onload = (e: any) => {
+            const data = e.target.result;
+            setIsImporting(true);
+            ipcRenderer.send('import-data', { data });
+          };
+          reader.readAsText(file);
+        }
       }
     };
     input.click();
@@ -253,22 +262,15 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose, onImportSuccess,
           <div className="settings-section">
             <h3>Export Data</h3>
             <p className="settings-description">
-              Export all your snippets to a file for backup or migration purposes.
+              Export all your snippets to a zip file for backup or migration purposes. Images and other assets will be included.
             </p>
             <div className="export-buttons">
               <button 
-                onClick={() => handleExport('json')}
+                onClick={handleExport}
                 disabled={isExporting}
                 className="export-button"
               >
-                {isExporting ? 'Exporting...' : 'Export as JSON'}
-              </button>
-              <button 
-                onClick={() => handleExport('csv')}
-                disabled={isExporting}
-                className="export-button"
-              >
-                {isExporting ? 'Exporting...' : 'Export as CSV'}
+                {isExporting ? 'Exporting...' : 'Export'}
               </button>
             </div>
           </div>
@@ -276,7 +278,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose, onImportSuccess,
           <div className="settings-section">
             <h3>Import Data</h3>
             <p className="settings-description">
-              Import snippets from a JSON or CSV file. Data will be added to your existing snippets.
+              Import snippets from a ZIP file (recommended) or legacy JSON/CSV files. Data will be added to your existing snippets.
             </p>
             <div className="import-buttons">
               <button 

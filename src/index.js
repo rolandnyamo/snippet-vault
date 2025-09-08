@@ -210,11 +210,11 @@ app.whenReady().then(async () => {
     }
   });
 
-  ipcMain.on('export-data', async (event, format) => {
+  ipcMain.on('export-data', async (event) => {
     try {
       const configPath = get_config_path(app.getPath('userData'));
-      const data = await exportData(configPath, format);
-      event.sender.send('export-data-result', data, format);
+      const zipBuffer = await exportData(configPath);
+      event.sender.send('export-data-result', zipBuffer);
     } catch (error) {
       console.error('Error exporting data:', error);
       event.sender.send('export-data-error', error.message);
@@ -252,7 +252,7 @@ app.whenReady().then(async () => {
     }
   });
 
-  ipcMain.on('import-data', async (event, { data, format }) => {
+  ipcMain.on('import-data', async (event, { data, zipData }) => {
     try {
       const configPath = get_config_path(app.getPath('userData'));
       
@@ -261,7 +261,7 @@ app.whenReady().then(async () => {
         event.sender.send('import-data-progress', progress);
       };
       
-      const result = await importData(configPath, data, format, progressCallback);
+      const result = await importData(configPath, data, zipData, progressCallback);
       event.sender.send('import-data-result', result);
     } catch (error) {
       console.error('Error importing data:', error);
