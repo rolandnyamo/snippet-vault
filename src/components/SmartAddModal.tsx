@@ -20,8 +20,90 @@ const SmartAddModal: React.FC<SmartAddModalProps> = ({ onSave, onCancel, isSavin
   const payloadRef = useAutosize<HTMLTextAreaElement>();
   const descriptionRef = useRef<HTMLInputElement>(null);
 
+  const handleImageDrop = async (files: FileList) => {
+    const file = files[0];
+    if (file && file.type.startsWith('image/')) {
+      try {
+        const { ipcRenderer } = window.require('electron');
+        // Convert file to buffer for IPC
+        const arrayBuffer = await file.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
+        const savedPath = await ipcRenderer.invoke('save-dropped-image', {
+          buffer,
+          name: file.name,
+          type: file.type
+        });
+        setPayload(savedPath);
+        setDetectedType('image');
+        setStep('description');
+        // Auto-focus description input after a short delay
+        setTimeout(() => {
+          descriptionRef.current?.focus();
+        }, 100);
+      } catch (error) {
+        console.error('Error handling dropped image:', error);
+      }
+    }
+  };
+
+  const handlePaste = async (e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.type.startsWith('image/')) {
+        e.preventDefault();
+        const file = item.getAsFile();
+        if (file) {
+          try {
+            const { ipcRenderer } = window.require('electron');
+            const arrayBuffer = await file.arrayBuffer();
+            const buffer = Buffer.from(arrayBuffer);
+            const savedPath = await ipcRenderer.invoke('save-pasted-image', {
+              buffer,
+              name: `pasted-image-${Date.now()}.png`,
+              type: file.type
+            });
+            setPayload(savedPath);
+            setDetectedType('image');
+            setStep('description');
+            // Auto-focus description input after a short delay
+            setTimeout(() => {
+              descriptionRef.current?.focus();
+            }, 100);
+          } catch (error) {
+            console.error('Error handling pasted image:', error);
+          }
+        }
+        return;
+      }
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+      handleImageDrop(files);
+    }
+  };
+
   const detectContentType = (content: string): ItemType => {
     const trimmed = content.trim();
+    
+    // Check if it's an image file path
+    const imageExtensions = /\.(jpg|jpeg|png|gif|bmp|webp|svg|heic|heif)$/i;
+    if (imageExtensions.test(trimmed)) {
+      return 'image';
+    }
     
     // URL detection - more comprehensive regex
     const urlRegex = /^https?:\/\/[^\s/$.?#].[^\s]*$/i;
@@ -157,7 +239,13 @@ const SmartAddModal: React.FC<SmartAddModalProps> = ({ onSave, onCancel, isSavin
   };
 
   return (
-    <div className="modal-backdrop" onClick={handleBackdropClick}>
+    <div 
+      className="modal-backdrop" 
+      onClick={handleBackdropClick}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+      onPaste={handlePaste}
+    >
       <div className="modal-content smart-add-modal" role="dialog" aria-modal="true">
         <div className="smart-add-header">
           <h2 className="modal-title">Add New Item</h2>
@@ -231,6 +319,15 @@ const SmartAddModal: React.FC<SmartAddModalProps> = ({ onSave, onCancel, isSavin
                 <div className="type-label">Prompt</div>
                 <div className="type-description">Natural-language prompt text</div>
               </button>
+              <button 
+                className={`type-option ${isSaving ? 'disabled' : ''}`}
+                onClick={() => !isSaving && handleTypeSelection('image')}
+                disabled={isSaving}
+              >
+                <div className="type-icon">📷</div>
+                <div className="type-label">Image</div>
+                <div className="type-description">Image file or screenshot</div>
+              </button>
             </div>
           </div>
         )}
@@ -239,9 +336,25 @@ const SmartAddModal: React.FC<SmartAddModalProps> = ({ onSave, onCancel, isSavin
           <div className="smart-add-step">
             <div className="payload-preview">
               <div className="type-badge">
-                {detectedType === 'link' ? '🔗 Link' : detectedType === 'kusto_query' ? '📊 KQL Query' : '💬 Prompt'}
+                {detectedType === 'link' ? '🔗 Link' : 
+                 detectedType === 'kusto_query' ? '📊 KQL Query' : 
+                 detectedType === 'image' ? '� Image' : '�💬 Prompt'}
               </div>
-              <div className="preview-text">{payload}</div>
+              {detectedType === 'image' ? (
+                <img 
+                  src={`file://${payload}`} 
+                  alt="Preview"
+                  style={{ 
+                    maxWidth: '200px', 
+                    maxHeight: '150px', 
+                    objectFit: 'contain',
+                    border: '1px solid #ddd',
+                    borderRadius: '4px'
+                  }}
+                />
+              ) : (
+                <div className="preview-text">{payload}</div>
+              )}
             </div>
             
             <input

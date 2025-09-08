@@ -13,7 +13,14 @@ export async function addItem(item, configPath) {
 
     // Ensure embedding table is compatible before generating embedding
     await ensureEmbeddingTableCompatible(db, configPath);
-    const embedding = await generateEmbedding(item.payload + ' ' + item.description, db, configPath);
+    
+    // For images, generate embedding only from description since we don't have image embedding models yet
+    // For other types, use payload + description as before
+    const textForEmbedding = item.type === 'image' 
+      ? item.description 
+      : item.payload + ' ' + item.description;
+    
+    const embedding = await generateEmbedding(textForEmbedding, db, configPath);
     
     // Add to raw table (backup/export source)
     const rawTable = await db.openTable('items_raw');
@@ -75,7 +82,12 @@ export async function updateItem(itemId, updates, configPath) {
     
     // If payload or description changed, regenerate embedding
     if (updates.payload !== undefined || updates.description !== undefined) {
-      const newText = updatedItem.payload + ' ' + updatedItem.description;
+      // For images, generate embedding only from description
+      // For other types, use payload + description as before
+      const newText = updatedItem.type === 'image' 
+        ? updatedItem.description 
+        : updatedItem.payload + ' ' + updatedItem.description;
+        
       await ensureEmbeddingTableCompatible(db, configPath);
       const newEmbedding = await generateEmbedding(newText, db, configPath);
       

@@ -25,6 +25,7 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ item, onEdit, onCopy, onDelet
       case 'kusto_query': return 'Kusto Query';
       case 'link': return 'Link';
       case 'prompt': return 'Prompt';
+      case 'image': return 'Image';
       default: return type;
     }
   };
@@ -74,29 +75,32 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ item, onEdit, onCopy, onDelet
     setTimeout(() => setShowCopySuccess(false), 1500);
   };
 
-  const copyText = async (text: string, kind: 'query' | 'url' = 'query') => {
+  const copyText = async (text: string, type: string) => {
     try {
-      if (navigator?.clipboard?.writeText) {
-        await navigator.clipboard.writeText(text);
-      } else {
-        // Fallback to Electron clipboard if available
-        // @ts-ignore
-        const electronClipboard = window.require?.('electron')?.clipboard;
-        electronClipboard?.writeText?.(text);
-      }
-      if (kind === 'url') {
+      await navigator.clipboard.writeText(text);
+      if (type === 'url') {
         setShowUrlCopySuccess(true);
-        setTimeout(() => setShowUrlCopySuccess(false), 1500);
+        setTimeout(() => setShowUrlCopySuccess(false), 2000);
       } else {
         setShowCopySuccess(true);
-        setTimeout(() => setShowCopySuccess(false), 1500);
+        setTimeout(() => setShowCopySuccess(false), 2000);
       }
-    } catch (e) {
-      console.error('Failed to copy text:', e);
+    } catch (err) {
+      console.error('Failed to copy text:', err);
     }
   };
 
-  // Heuristically parse Kusto payloads that include a URL on the first non-empty line
+  const copyImage = async (imagePath: string) => {
+    try {
+      // Use Electron API to copy image to clipboard
+      const { ipcRenderer } = window.require('electron');
+      await ipcRenderer.invoke('copy-image-to-clipboard', imagePath);
+      setShowCopySuccess(true);
+      setTimeout(() => setShowCopySuccess(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy image:', err);
+    }
+  };  // Heuristically parse Kusto payloads that include a URL on the first non-empty line
   const parsed = useMemo(() => {
     const res: { url?: string; query?: string } = {};
     if (!item?.payload) return res;
@@ -124,6 +128,7 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ item, onEdit, onCopy, onDelet
   const isKustoQuery = item.type === 'kusto_query';
   const isLink = item.type === 'link';
   const isPrompt = item.type === 'prompt';
+  const isImage = item.type === 'image';
   const hasUrl = Boolean(parsed.url || (isLink && item.payload));
   const effectiveUrl = parsed.url || (isLink ? item.payload : undefined);
   const isAdxUrl = effectiveUrl ? /dataexplorer\.azure\.com/i.test(effectiveUrl) : false;
@@ -155,6 +160,19 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ item, onEdit, onCopy, onDelet
       }
     } catch (e) {
       console.error('Failed to open external URL:', e);
+    }
+  };
+
+  const handleOpenFile = (filePath?: string) => {
+    if (!filePath) return;
+    try {
+      if (shell?.openPath) {
+        shell.openPath(filePath);
+      } else {
+        console.error('Shell API not available');
+      }
+    } catch (e) {
+      console.error('Failed to open file:', e);
     }
   };
 
@@ -269,6 +287,19 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ item, onEdit, onCopy, onDelet
               </button>
             </>
           )}
+          {isImage && (
+            <>
+              <button className="action-button" onClick={() => handleOpenFile(item.payload)} title="Open Image">
+                Open Image
+              </button>
+              <button className="action-button secondary" onClick={() => copyText(item.payload, 'path')}>
+                {showCopySuccess ? 'Path Copied!' : 'Copy Path'}
+              </button>
+              <button className="action-button secondary" onClick={() => copyImage(item.payload)}>
+                {showCopySuccess ? 'Image Copied!' : 'Copy Image'}
+              </button>
+            </>
+          )}
         </div>
         
         <div className="payload-container">
@@ -303,6 +334,29 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ item, onEdit, onCopy, onDelet
           ) : isLink ? (
             <div className="payload-text" style={{ whiteSpace: 'normal' }}>
               <span style={{ color: '#666' }}>This item is a link. Use the Open button or copy from the Full URL field above.</span>
+            </div>
+          ) : isImage ? (
+            <div className="image-preview">
+              <img 
+                src={`file://${item.payload}`} 
+                alt={item.description}
+                style={{ 
+                  maxWidth: '100%', 
+                  maxHeight: '400px', 
+                  objectFit: 'contain',
+                  border: '1px solid #ddd',
+                  borderRadius: '4px'
+                }}
+                onError={(e) => {
+                  (e.target as HTMLImageElement).style.display = 'none';
+                  const errorDiv = document.createElement('div');
+                  errorDiv.innerHTML = `<span style="color: #666;">Image not found: ${item.payload}</span>`;
+                  (e.target as HTMLImageElement).parentNode?.appendChild(errorDiv);
+                }}
+              />
+              <div style={{ marginTop: '8px', fontSize: '12px', color: '#666' }}>
+                {item.payload}
+              </div>
             </div>
           ) : (
             <pre className="payload-text">

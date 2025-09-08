@@ -4,16 +4,33 @@ process.env.TRANSFORMERS_FORCE_WEB = 'true';
 process.env.ONNX_WEB = 'true';
 process.env.ONNXRUNTIME_NODE_DISABLED = 'true';
 
-import { app, BrowserWindow, dialog, ipcMain } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, nativeImage, clipboard } from 'electron';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { v4 as uuidv4 } from 'uuid';
 
 import { initializeDatabase, get_config_path, addItem, searchItems, getRecentItems, deleteItem, getAllItems, exportData, getDataPath, importData, deleteAllData, getCurrentEmbeddingModel, regenerateAllEmbeddings, getAvailableModels, setEmbeddingModelType, getCurrentModelType, canLoadTensorFlow, resetDatabase, updateItem } from './store/index.js';
 
 // Get the current directory for ES modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Helper function to get file extension from MIME type
+function getExtensionFromMimeType(mimeType) {
+  const mimeToExt = {
+    'image/jpeg': '.jpg',
+    'image/jpg': '.jpg',
+    'image/png': '.png',
+    'image/gif': '.gif',
+    'image/bmp': '.bmp',
+    'image/webp': '.webp',
+    'image/svg+xml': '.svg',
+    'image/heic': '.heic',
+    'image/heif': '.heif'
+  };
+  return mimeToExt[mimeType] || '.png';
+}
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 // Note: We need to use dynamic import for this CommonJS module
@@ -79,6 +96,87 @@ app.whenReady().then(async () => {
       return updatedItem;
     } catch (error) {
       console.error('Error updating item:', error);
+      throw error;
+    }
+  });
+
+  // Image-related IPC handlers
+  ipcMain.handle('select-image-file', async () => {
+    try {
+      const result = await dialog.showOpenDialog(mainWindow, {
+        title: 'Select Image',
+        filters: [
+          { name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg', 'heic', 'heif'] }
+        ],
+        properties: ['openFile']
+      });
+      
+      if (!result.canceled && result.filePaths.length > 0) {
+        return { filePath: result.filePaths[0] };
+      }
+      return result;
+    } catch (error) {
+      console.error('Error selecting image:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('save-dropped-image', async (event, fileData) => {
+    try {
+      const { buffer, name, type } = fileData;
+      const imageDir = path.join(app.getPath('userData'), 'images');
+      
+      // Create images directory if it doesn't exist
+      if (!fs.existsSync(imageDir)) {
+        fs.mkdirSync(imageDir, { recursive: true });
+      }
+      
+      // Generate unique filename using UUID and preserve extension
+      const ext = path.extname(name) || getExtensionFromMimeType(type);
+      const fileName = `${uuidv4()}${ext}`;
+      const filePath = path.join(imageDir, fileName);
+      
+      // Write the buffer to file
+      fs.writeFileSync(filePath, buffer);
+      
+      return filePath;
+    } catch (error) {
+      console.error('Error saving dropped image:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('save-pasted-image', async (event, fileData) => {
+    try {
+      const { buffer, name, type } = fileData;
+      const imageDir = path.join(app.getPath('userData'), 'images');
+      
+      // Create images directory if it doesn't exist
+      if (!fs.existsSync(imageDir)) {
+        fs.mkdirSync(imageDir, { recursive: true });
+      }
+      
+      // Generate unique filename using UUID
+      const ext = getExtensionFromMimeType(type) || '.png';
+      const fileName = `${uuidv4()}${ext}`;
+      const filePath = path.join(imageDir, fileName);
+      
+      // Write the buffer to file
+      fs.writeFileSync(filePath, buffer);
+      
+      return filePath;
+    } catch (error) {
+      console.error('Error saving pasted image:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('copy-image-to-clipboard', async (event, imagePath) => {
+    try {
+      const image = nativeImage.createFromPath(imagePath);
+      clipboard.writeImage(image);
+    } catch (error) {
+      console.error('Error copying image to clipboard:', error);
       throw error;
     }
   });
