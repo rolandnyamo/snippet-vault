@@ -316,6 +316,14 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ item, onEdit, onCopy, onDelet
             ) : isLink ? (
               // For links, we no longer show copy in the payload header; copy is near the Full URL field
               <></>
+            ) : isImage ? (
+              <button 
+                className={`copy-icon-button ${showCopySuccess ? 'success' : ''}`}
+                onClick={() => copyImage(item.payload)}
+                title={showCopySuccess ? 'Copied!' : 'Copy image to clipboard'}
+              >
+                {showCopySuccess ? 'Copied!' : 'Copy Image'}
+              </button>
             ) : (
               <button 
                 className={`copy-icon-button ${showCopySuccess ? 'success' : ''}`}
