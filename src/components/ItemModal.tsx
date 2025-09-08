@@ -163,6 +163,17 @@ const ItemModal: React.FC<ItemModalProps> = ({ item, onSave, onCancel, onDelete,
                 />
                 Kusto Query
               </label>
+              <label className="radio-label">
+                <input
+                  type="radio"
+                  name="type"
+                  value="prompt"
+                  checked={type === 'prompt'}
+                  onChange={(e) => setType(e.target.value as ItemType)}
+                  disabled={isSaving}
+                />
+                Prompt
+              </label>
             </div>
           </div>
 
@@ -186,7 +197,7 @@ const ItemModal: React.FC<ItemModalProps> = ({ item, onSave, onCancel, onDelete,
 
           <div className="form-group">
             <label htmlFor="payload" className="form-label">
-              Payload ({type === 'link' ? 'URL' : 'KQL'})
+              {type === 'link' ? 'Payload (URL)' : type === 'kusto_query' ? 'Payload (KQL)' : 'Payload (Prompt)'}
             </label>
             <textarea
               id="payload"
@@ -194,7 +205,7 @@ const ItemModal: React.FC<ItemModalProps> = ({ item, onSave, onCancel, onDelete,
               value={payload}
               onChange={(e) => setPayload(e.target.value)}
               className={`form-textarea ${errors.payload ? 'error' : ''}`}
-              placeholder={type === 'link' ? 'https://...' : 'Enter your KQL query...'}
+              placeholder={type === 'link' ? 'https://...' : type === 'kusto_query' ? 'Enter your KQL query...' : 'Enter your prompt...'}
               rows={3}
               disabled={isSaving}
             />

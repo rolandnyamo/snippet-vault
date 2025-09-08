@@ -24,6 +24,7 @@ const ItemRow: React.FC<ItemRowProps> = ({
     switch (type) {
       case 'kusto_query': return 'KQL';
       case 'link': return 'URL';
+      case 'prompt': return 'PRM';
       default: return type.toUpperCase();
     }
   };

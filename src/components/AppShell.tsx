@@ -106,6 +106,15 @@ const AppShell: React.FC = () => {
       showToastNotification('❌ Failed to add item: ' + error);
     };
 
+    const handleItemUpdated = (event: any, updatedItem: Item) => {
+      // Refresh lists so UI reflects saved changes
+      ipcRenderer.send('get-recent-items');
+      ipcRenderer.send('get-all-items');
+      // Update selected item if it's the one edited
+      setSelectedItem(prev => (prev && prev.id === updatedItem.id ? updatedItem : prev));
+      showToastNotification('✅ Item updated successfully!');
+    };
+
     const handleModelTypeSet = (event: any, result: any) => {
       setCurrentEmbeddingModel(result.modelType);
     };
@@ -159,6 +168,7 @@ const AppShell: React.FC = () => {
     ipcRenderer.on('all-items', handleAllItems);
     ipcRenderer.on('item-added', handleItemAdded);
     ipcRenderer.on('item-add-error', handleItemAddError);
+    ipcRenderer.on('item-updated', handleItemUpdated);
     ipcRenderer.on('item-deleted', handleItemDeleted);
     ipcRenderer.on('item-delete-error', handleItemDeleteError);
     ipcRenderer.on('model-type-set', handleModelTypeSet);
@@ -177,6 +187,7 @@ const AppShell: React.FC = () => {
       ipcRenderer.removeListener('all-items', handleAllItems);
       ipcRenderer.removeListener('item-added', handleItemAdded);
       ipcRenderer.removeListener('item-add-error', handleItemAddError);
+      ipcRenderer.removeListener('item-updated', handleItemUpdated);
       ipcRenderer.removeListener('item-deleted', handleItemDeleted);
       ipcRenderer.removeListener('item-delete-error', handleItemDeleteError);
       ipcRenderer.removeListener('model-type-set', handleModelTypeSet);

@@ -20,7 +20,7 @@ const SmartAddModal: React.FC<SmartAddModalProps> = ({ onSave, onCancel, isSavin
   const payloadRef = useAutosize<HTMLTextAreaElement>();
   const descriptionRef = useRef<HTMLInputElement>(null);
 
-  const detectContentType = (content: string): ItemType | null => {
+  const detectContentType = (content: string): ItemType => {
     const trimmed = content.trim();
     
     // URL detection - more comprehensive regex
@@ -31,29 +31,25 @@ const SmartAddModal: React.FC<SmartAddModalProps> = ({ onSave, onCancel, isSavin
       return 'link';
     }
     
-    // KQL detection - look for common KQL patterns
-    const kqlPatterns = [
-      /\b(let|datatable|union|join|where|project|extend|summarize|order by|take|limit|sort by)\b/i,
-      /\b(ago|now|startofday|endofday|bin)\s*\(/i,
-      /\b(count|sum|avg|min|max|dcount|percentile)\s*\(/i,
-      /\|\s*(where|project|extend|summarize|order|take|limit|sort)/i,
-      /^[a-zA-Z][a-zA-Z0-9_]*\s*\|/,  // Table name followed by pipe
-    ];
-    
-    const hasKqlPattern = kqlPatterns.some(pattern => pattern.test(trimmed));
-    
-    // If it has KQL patterns and is multi-line or has pipes, likely KQL
-    if (hasKqlPattern || trimmed.includes('|')) {
+    // KQL detection - look for strong KQL signals
+    // We try to avoid false positives so generic text becomes a 'prompt'
+    const kqlStrongOps = /(where|project|extend|summarize|order\s+by|take|limit|sort\s+by)/i;
+    const hasKqlPipeWithOp = /\|\s*(where|project|extend|summarize|order\s+by|take|limit|sort\s+by)/i.test(trimmed);
+    const hasKqlFuncs = /(ago|now|startofday|endofday|bin)\s*\(/i.test(trimmed);
+    const hasAggFuncs = /(count|sum|avg|min|max|dcount|percentile)\s*\(/i.test(trimmed);
+    const looksLikeTableThenPipe = /^[a-zA-Z][a-zA-Z0-9_]*\s*\|/.test(trimmed);
+
+    const kqlKeywordHits = [hasKqlPipeWithOp, hasKqlFuncs, hasAggFuncs, looksLikeTableThenPipe]
+      .filter(Boolean).length;
+
+    // Classify as KQL if we have a strong operator after a pipe,
+    // or multiple independent KQL cues
+    if (hasKqlPipeWithOp || kqlKeywordHits >= 2) {
       return 'kusto_query';
     }
-    
-    // If it's a single line without obvious URL markers, could be either
-    if (trimmed.split('\n').length === 1 && trimmed.length < 200) {
-      return null; // Ambiguous, ask user
-    }
-    
-    // Multi-line text without URL patterns is likely KQL
-    return 'kusto_query';
+
+    // Default: treat as a natural-language prompt
+    return 'prompt';
   };
 
   const handlePayloadSubmit = () => {
@@ -62,16 +58,12 @@ const SmartAddModal: React.FC<SmartAddModalProps> = ({ onSave, onCancel, isSavin
     const detected = detectContentType(payload);
     setDetectedType(detected);
     
-    if (detected === null) {
-      setShowTypeSelection(true);
-      setStep('type-selection');
-    } else {
-      setStep('description');
-      // Auto-focus description input after a short delay
-      setTimeout(() => {
-        descriptionRef.current?.focus();
-      }, 100);
-    }
+    // Always proceed with detected type (link, kusto_query, or prompt)
+    setStep('description');
+    // Auto-focus description input after a short delay
+    setTimeout(() => {
+      descriptionRef.current?.focus();
+    }, 100);
   };
 
   const handleTypeSelection = (type: ItemType) => {
@@ -143,7 +135,7 @@ const SmartAddModal: React.FC<SmartAddModalProps> = ({ onSave, onCancel, isSavin
   const getPlaceholder = () => {
     switch (step) {
       case 'payload':
-        return 'Paste your Azure Data Explorer URL and KQL query, or just a KQL query...';
+        return 'Paste your content here. URL, KQL query, or prompt...';
       case 'description':
         return 'Enter a description...';
       default:
@@ -230,6 +222,15 @@ const SmartAddModal: React.FC<SmartAddModalProps> = ({ onSave, onCancel, isSavin
                 <div className="type-label">KQL Query</div>
                 <div className="type-description">Kusto Query Language</div>
               </button>
+              <button 
+                className={`type-option ${isSaving ? 'disabled' : ''}`}
+                onClick={() => !isSaving && handleTypeSelection('prompt')}
+                disabled={isSaving}
+              >
+                <div className="type-icon">💬</div>
+                <div className="type-label">Prompt</div>
+                <div className="type-description">Natural-language prompt text</div>
+              </button>
             </div>
           </div>
         )}
@@ -238,7 +239,7 @@ const SmartAddModal: React.FC<SmartAddModalProps> = ({ onSave, onCancel, isSavin
           <div className="smart-add-step">
             <div className="payload-preview">
               <div className="type-badge">
-                {detectedType === 'link' ? '🔗 Link' : '📊 KQL Query'}
+                {detectedType === 'link' ? '🔗 Link' : detectedType === 'kusto_query' ? '📊 KQL Query' : '💬 Prompt'}
               </div>
               <div className="preview-text">{payload}</div>
             </div>

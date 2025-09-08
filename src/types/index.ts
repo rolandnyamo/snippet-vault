@@ -1,4 +1,4 @@
-export type ItemType = 'link' | 'kusto_query';
+export type ItemType = 'link' | 'kusto_query' | 'prompt';
 
 export interface Item {
   id: string;

@@ -24,6 +24,7 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ item, onEdit, onCopy, onDelet
     switch (type) {
       case 'kusto_query': return 'Kusto Query';
       case 'link': return 'Link';
+      case 'prompt': return 'Prompt';
       default: return type;
     }
   };
@@ -122,6 +123,7 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ item, onEdit, onCopy, onDelet
 
   const isKustoQuery = item.type === 'kusto_query';
   const isLink = item.type === 'link';
+  const isPrompt = item.type === 'prompt';
   const hasUrl = Boolean(parsed.url || (isLink && item.payload));
   const effectiveUrl = parsed.url || (isLink ? item.payload : undefined);
   const isAdxUrl = effectiveUrl ? /dataexplorer\.azure\.com/i.test(effectiveUrl) : false;
