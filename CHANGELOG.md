@@ -1,3 +1,24 @@
+## [1.2.0](https://github.com/rolandnyamo/snippet-vault/compare/v1.1.0...v1.2.0) (2025-09-09)
+
+
+### Features
+
+* adding support for image in import/export ([cc1ccfc](https://github.com/rolandnyamo/snippet-vault/commit/cc1ccfcbcac066624ff04bd16f579aa7d3911b0c))
+* **component:** added support for image type ([fe49b53](https://github.com/rolandnyamo/snippet-vault/commit/fe49b539c1b4c777ec039745d5e9ee3080e4cebe))
+* **component:** added: support for prompt "type" ([5d20e91](https://github.com/rolandnyamo/snippet-vault/commit/5d20e91133fb653a0216f24a843680cef2d9e7b2))
+* **component:** fuzzy text search ([14ed33c](https://github.com/rolandnyamo/snippet-vault/commit/14ed33c5f81206297dee4900185e005eaea2d864))
+* **component:** viewing experience improvement ([13a476a](https://github.com/rolandnyamo/snippet-vault/commit/13a476a704d27b4a6a8a442a411cfd93cc97046c))
+
+
+### Bug Fixes
+
+* **component:** dev tools only open if app is not packaged ([42c15df](https://github.com/rolandnyamo/snippet-vault/commit/42c15dff9dfad830baecb9468f680ce70626908b))
+* **component:** show loading state when item is being saved ([8c818ba](https://github.com/rolandnyamo/snippet-vault/commit/8c818babd60bca921070e97dcbe13bd92cbe3120))
+* **component:** undid changes made for kust url enhancement ([9fe6878](https://github.com/rolandnyamo/snippet-vault/commit/9fe6878548ee5e2b80e717b892cf1f32c9d771f8))
+* failing tests ([11b033e](https://github.com/rolandnyamo/snippet-vault/commit/11b033e0076ef63105d1fcc3f0c33c4d83bc7c80))
+* some enhancements ([bf40d31](https://github.com/rolandnyamo/snippet-vault/commit/bf40d31cd7aa45f9b63aa97566f33c95b7e77e99))
+* use local jest instead of npx to resolve babel preset issues ([4409647](https://github.com/rolandnyamo/snippet-vault/commit/440964749b6c7b5be6e5a17d7b64cff6e0c085f1))
+
 ## [1.1.0](https://github.com/rolandnyamo/snippet-vault/compare/v1.0.1...v1.1.0) (2025-08-07)
 
 
