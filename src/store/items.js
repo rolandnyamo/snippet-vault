@@ -1,6 +1,8 @@
 import fs from 'fs';
+import path from 'path';
 import lancedb from '@lancedb/lancedb';
 import { v4 as uuidv4 } from 'uuid';
+import AdmZip from 'adm-zip';
 import { generateEmbedding, getCurrentEmbeddingModel, ensureEmbeddingTableCompatible, ensureEmbeddingCurrent, createZeroVector } from './embeddings/index.js';
 
 export async function addItem(item, configPath) {
@@ -13,7 +15,14 @@ export async function addItem(item, configPath) {
 
     // Ensure embedding table is compatible before generating embedding
     await ensureEmbeddingTableCompatible(db, configPath);
-    const embedding = await generateEmbedding(item.payload + ' ' + item.description, db, configPath);
+    
+    // For images, generate embedding only from description since we don't have image embedding models yet
+    // For other types, use payload + description as before
+    const textForEmbedding = item.type === 'image' 
+      ? item.description 
+      : item.payload + ' ' + item.description;
+    
+    const embedding = await generateEmbedding(textForEmbedding, db, configPath);
     
     // Add to raw table (backup/export source)
     const rawTable = await db.openTable('items_raw');
@@ -75,7 +84,12 @@ export async function updateItem(itemId, updates, configPath) {
     
     // If payload or description changed, regenerate embedding
     if (updates.payload !== undefined || updates.description !== undefined) {
-      const newText = updatedItem.payload + ' ' + updatedItem.description;
+      // For images, generate embedding only from description
+      // For other types, use payload + description as before
+      const newText = updatedItem.type === 'image' 
+        ? updatedItem.description 
+        : updatedItem.payload + ' ' + updatedItem.description;
+        
       await ensureEmbeddingTableCompatible(db, configPath);
       const newEmbedding = await generateEmbedding(newText, db, configPath);
       
@@ -401,7 +415,7 @@ async function getLegacyAllItems(db) {
   }
 }
 
-export async function exportData(configPath, format = 'json') {
+export async function exportData(configPath) {
   try {
     // Export from raw table - this is the clean backup data
     const config = JSON.parse(fs.readFileSync(configPath));
@@ -411,26 +425,48 @@ export async function exportData(configPath, format = 'json') {
     
     const sortedItems = items.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
     
-    if (format === 'csv') {
-      // Convert to CSV format
-      const headers = ['id', 'type', 'description', 'payload', 'created_at', 'last_accessed_at'];
-      const csvRows = [
-        headers.join(','),
-        ...sortedItems.map(item => 
-          headers.map(header => {
-            const value = item[header] || '';
-            // Escape quotes and wrap in quotes if contains comma or quote
-            return typeof value === 'string' && (value.includes(',') || value.includes('"'))
-              ? `"${value.replace(/"/g, '""')}"` 
-              : value;
-          }).join(',')
-        )
-      ];
-      return csvRows.join('\n');
-    } else {
-      // Default to JSON format
-      return JSON.stringify(sortedItems, null, 2);
+    // Create a zip file
+    const zip = new AdmZip();
+    
+    // Prepare items for export - convert image paths to relative paths
+    const exportItems = [];
+    const imageFiles = new Set();
+    
+    for (const item of sortedItems) {
+      const exportItem = { ...item };
+      
+      if (item.type === 'image' && item.payload) {
+        // Convert absolute path to relative path and collect image file
+        const fileName = path.basename(item.payload);
+        const relativePath = `images/${fileName}`;
+        exportItem.payload = relativePath;
+        
+        // Add image file to the list to be included in zip
+        if (fs.existsSync(item.payload)) {
+          imageFiles.add({
+            originalPath: item.payload,
+            zipPath: relativePath
+          });
+        }
+      }
+      
+      exportItems.push(exportItem);
     }
+    
+    // Add the JSON data file
+    zip.addFile('data.json', Buffer.from(JSON.stringify(exportItems, null, 2), 'utf8'));
+    
+    // Add all image files
+    for (const imageFile of imageFiles) {
+      try {
+        zip.addLocalFile(imageFile.originalPath, 'images/', path.basename(imageFile.originalPath));
+      } catch (error) {
+        console.warn(`Failed to add image to zip: ${imageFile.originalPath}`, error);
+      }
+    }
+    
+    // Return the zip buffer
+    return zip.toBuffer();
   } catch (error) {
     console.error('Detailed error in exportData:', error);
     console.error('Error stack:', error.stack);
@@ -438,50 +474,130 @@ export async function exportData(configPath, format = 'json') {
   }
 }
 
-export async function importData(configPath, importData, format = 'json', progressCallback = null) {
+export async function importData(configPath, importData, zipData, progressCallback = null) {
   try {
-    let items = [];
+    const config = JSON.parse(fs.readFileSync(configPath));
+    const db = await lancedb.connect(config.storage_path);
     
-    if (format === 'csv') {
-      // Parse CSV data
-      const lines = importData.trim().split('\n');
-      if (lines.length < 2) {
-        throw new Error('CSV file must contain at least a header row and one data row');
-      }
-      
-      const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
-      const requiredFields = ['type', 'description', 'payload'];
-      
-      for (const field of requiredFields) {
-        if (!headers.includes(field)) {
-          throw new Error(`CSV file must contain required field: ${field}`);
-        }
-      }
-      
-      for (let i = 1; i < lines.length; i++) {
-        const values = lines[i].split(',').map(v => v.trim().replace(/^"|"$/g, ''));
-        const item = {};
+    let items = []; // Initialize as empty array
+    const imagesDir = path.join(path.dirname(config.storage_path), 'images');
+    
+    // Ensure images directory exists
+    if (!fs.existsSync(imagesDir)) {
+      fs.mkdirSync(imagesDir, { recursive: true });
+    }
+    
+    console.log('Import called with:', { hasZipData: !!zipData, hasImportData: !!importData });
+    
+    // Check if this is zip data
+    if (zipData) {
+      console.log('Processing zip data, size:', zipData.byteLength);
+      try {
+        const zip = new AdmZip(Buffer.from(zipData));
+        const zipEntries = zip.getEntries();
+        console.log('Zip entries found:', zipEntries.length);
         
-        headers.forEach((header, index) => {
-          if (values[index] !== undefined) {
-            item[header] = values[index];
-          }
-        });
-        
-        // Validate required fields
-        for (const field of requiredFields) {
-          if (!item[field] || item[field].trim() === '') {
-            throw new Error(`Row ${i + 1}: Missing required field '${field}'`);
-          }
+        // Find and parse the data file
+        const dataEntry = zipEntries.find(entry => entry.entryName === 'data.json');
+        if (!dataEntry) {
+          throw new Error('No data.json found in zip file');
         }
         
-        items.push(item);
+        const dataContent = dataEntry.getData().toString('utf8');
+        console.log('Data content length:', dataContent.length);
+        const parsedData = JSON.parse(dataContent);
+        items = Array.isArray(parsedData) ? parsedData : [parsedData];
+        console.log('Parsed items count:', items.length);
+        
+        // Extract and restore image files
+        const imageEntries = zipEntries.filter(entry => entry.entryName.startsWith('images/'));
+        console.log('Image entries found:', imageEntries.length);
+        
+        for (const imageEntry of imageEntries) {
+          if (!imageEntry.isDirectory) {
+            const fileName = path.basename(imageEntry.entryName);
+            const targetPath = path.join(imagesDir, fileName);
+            
+            // Extract image file to images directory
+            fs.writeFileSync(targetPath, imageEntry.getData());
+            
+            // Update items that reference this image to use the new absolute path
+            items.forEach(item => {
+              if (item.type === 'image' && item.payload === imageEntry.entryName) {
+                item.payload = targetPath;
+              }
+            });
+          }
+        }
+      } catch (zipError) {
+        console.error('Zip processing error:', zipError);
+        throw new Error(`Failed to process zip file: ${zipError.message}`);
       }
     } else {
-      // Parse JSON data
-      const parsedData = JSON.parse(importData);
-      items = Array.isArray(parsedData) ? parsedData : [parsedData];
-      
+      // Legacy import - handle JSON or CSV data
+      if (typeof importData === 'string') {
+        // Try to detect if it's CSV based on content structure
+        if (importData.trim().includes('\n') && importData.includes(',')) {
+          // Might be CSV, try parsing it
+          const lines = importData.trim().split('\n');
+          if (lines.length >= 2) {
+            const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+            const requiredFields = ['type', 'description', 'payload'];
+            
+            // Check if it looks like a CSV with required fields
+            const hasRequiredFields = requiredFields.every(field => headers.includes(field));
+            
+            if (hasRequiredFields) {
+              // Parse as CSV
+              for (let i = 1; i < lines.length; i++) {
+                const values = lines[i].split(',').map(v => v.trim().replace(/^"|"$/g, ''));
+                const item = {};
+                
+                headers.forEach((header, index) => {
+                  if (values[index] !== undefined) {
+                    item[header] = values[index];
+                  }
+                });
+                
+                // Validate required fields
+                for (const field of requiredFields) {
+                  if (!item[field] || item[field].trim() === '') {
+                    throw new Error(`Row ${i + 1}: Missing required field '${field}'`);
+                  }
+                }
+                
+                items.push(item);
+              }
+            } else {
+              // Try as JSON
+              const parsedData = JSON.parse(importData);
+              items = Array.isArray(parsedData) ? parsedData : [parsedData];
+            }
+          } else {
+            // Try as JSON
+            const parsedData = JSON.parse(importData);
+            items = Array.isArray(parsedData) ? parsedData : [parsedData];
+          }
+        } else {
+          // Parse as JSON
+          const parsedData = JSON.parse(importData);
+          items = Array.isArray(parsedData) ? parsedData : [parsedData];
+        }
+      } else {
+        items = importData;
+      }
+    }
+    
+    // Ensure items is always an array
+    if (!Array.isArray(items)) {
+      console.error('Items is not an array:', items);
+      throw new Error('Failed to process import data: items is not an array');
+    }
+    
+    console.log('Final items array length:', items.length);
+    
+    // Only validate if we have items to import
+    if (items.length > 0) {
       // Validate each item has required fields
       const requiredFields = ['type', 'description', 'payload'];
       for (let i = 0; i < items.length; i++) {
@@ -495,8 +611,6 @@ export async function importData(configPath, importData, format = 'json', progre
     }
     
     // Import each item using the new architecture
-    const config = JSON.parse(fs.readFileSync(configPath));
-    const db = await lancedb.connect(config.storage_path);
     const rawTable = await db.openTable('items_raw');
     const embeddingTable = await db.openTable('items_embeddings');
 
@@ -513,11 +627,20 @@ export async function importData(configPath, importData, format = 'json', progre
     
     for (let i = 0; i < items.length; i++) {
       try {
-  // Normalize imported item to ensure clean display and consistent storage
-  const item = normalizeImportedItem(items[i]);
+        // Normalize imported item to ensure clean display and consistent storage
+        const item = normalizeImportedItem(items[i]);
         const itemId = item.id || uuidv4(); // Use existing ID if provided
         const now = new Date().toISOString();
-        const embedding = await generateEmbedding(item.payload + ' ' + item.description, db, configPath);
+        
+        // Generate embedding differently for images vs other types
+        let embeddingText;
+        if (item.type === 'image') {
+          embeddingText = item.description; // Only use description for image embeddings
+        } else {
+          embeddingText = item.payload + ' ' + item.description;
+        }
+        
+        const embedding = await generateEmbedding(embeddingText, db, configPath);
         
         // Add to raw table
         await rawTable.add([{
