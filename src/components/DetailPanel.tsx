@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Item } from '../types';
 
 interface DetailPanelProps {
@@ -11,11 +11,21 @@ interface DetailPanelProps {
 
 const DetailPanel: React.FC<DetailPanelProps> = ({ item, onEdit, onCopy, onDelete, searchQuery }) => {
   const [showCopySuccess, setShowCopySuccess] = useState(false);
+  const [showUrlCopySuccess, setShowUrlCopySuccess] = useState(false);
+  
+  // Electron shell is available because nodeIntegration is true in webPreferences
+  let shell: any | undefined;
+  try {
+    // @ts-ignore - window.require is available in Electron renderer with nodeIntegration
+    shell = window.require?.('electron')?.shell;
+  } catch {}
 
   const getTypeLabel = (type: string): string => {
     switch (type) {
       case 'kusto_query': return 'Kusto Query';
       case 'link': return 'Link';
+      case 'prompt': return 'Prompt';
+      case 'image': return 'Image';
       default: return type;
     }
   };
@@ -65,6 +75,107 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ item, onEdit, onCopy, onDelet
     setTimeout(() => setShowCopySuccess(false), 1500);
   };
 
+  const copyText = async (text: string, type: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      if (type === 'url') {
+        setShowUrlCopySuccess(true);
+        setTimeout(() => setShowUrlCopySuccess(false), 2000);
+      } else {
+        setShowCopySuccess(true);
+        setTimeout(() => setShowCopySuccess(false), 2000);
+      }
+    } catch (err) {
+      console.error('Failed to copy text:', err);
+    }
+  };
+
+  const copyImage = async (imagePath: string) => {
+    try {
+      // Use Electron API to copy image to clipboard
+      const { ipcRenderer } = window.require('electron');
+      await ipcRenderer.invoke('copy-image-to-clipboard', imagePath);
+      setShowCopySuccess(true);
+      setTimeout(() => setShowCopySuccess(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy image:', err);
+    }
+  };  // Heuristically parse Kusto payloads that include a URL on the first non-empty line
+  const parsed = useMemo(() => {
+    const res: { url?: string; query?: string } = {};
+    if (!item?.payload) return res;
+    const raw = item.payload.trim();
+    const lines = raw.split(/\r?\n/);
+    // find first non-empty line
+    const firstContentIdx = lines.findIndex(l => l.trim().length > 0);
+    if (firstContentIdx >= 0) {
+      const firstLine = lines[firstContentIdx].trim();
+      const looksLikeUrl = /^https?:\/\//i.test(firstLine);
+      if (looksLikeUrl) {
+        res.url = firstLine;
+        // query is everything after the first non-empty line
+        const rest = lines.slice(firstContentIdx + 1).join('\n').trim();
+        if (rest.length > 0) res.query = rest;
+      }
+    }
+    // If no explicit URL detected, treat whole payload as query text
+    if (!res.query) {
+      res.query = item.payload;
+    }
+    return res;
+  }, [item]);
+
+  const isKustoQuery = item.type === 'kusto_query';
+  const isLink = item.type === 'link';
+  const isPrompt = item.type === 'prompt';
+  const isImage = item.type === 'image';
+  const hasUrl = Boolean(parsed.url || (isLink && item.payload));
+  const effectiveUrl = parsed.url || (isLink ? item.payload : undefined);
+  const isAdxUrl = effectiveUrl ? /dataexplorer\.azure\.com/i.test(effectiveUrl) : false;
+
+  // Extract cluster and database from ADX URL if present
+  const kustoMeta = useMemo(() => {
+    if (!isKustoQuery || !effectiveUrl) return {} as { cluster?: string; database?: string };
+    try {
+      const url = new URL(effectiveUrl);
+      const parts = url.pathname.split('/').filter(Boolean);
+      const clusterIdx = parts.findIndex(p => p.toLowerCase() === 'clusters');
+      const databaseIdx = parts.findIndex(p => p.toLowerCase() === 'databases');
+      const cluster = clusterIdx >= 0 && parts[clusterIdx + 1] ? parts[clusterIdx + 1] : undefined;
+      const database = databaseIdx >= 0 && parts[databaseIdx + 1] ? parts[databaseIdx + 1] : undefined;
+      return { cluster, database };
+    } catch {
+      return {} as { cluster?: string; database?: string };
+    }
+  }, [isKustoQuery, effectiveUrl]);
+
+  const handleOpenExternal = (url?: string) => {
+    if (!url) return;
+    try {
+      if (shell?.openExternal) {
+        shell.openExternal(url);
+      } else {
+        // Fallback: open via window
+        window.open(url, '_blank', 'noopener');
+      }
+    } catch (e) {
+      console.error('Failed to open external URL:', e);
+    }
+  };
+
+  const handleOpenFile = (filePath?: string) => {
+    if (!filePath) return;
+    try {
+      if (shell?.openPath) {
+        shell.openPath(filePath);
+      } else {
+        console.error('Shell API not available');
+      }
+    } catch (e) {
+      console.error('Failed to open file:', e);
+    }
+  };
+
   const handleEdit = () => {
     onEdit(item);
   };
@@ -86,6 +197,29 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ item, onEdit, onCopy, onDelet
             <span className="meta-label">Type:</span>
             <span className="meta-value">{getTypeLabel(item.type)}</span>
           </div>
+          {/* Link: show full URL field with copy control */}
+          {isLink && hasUrl && (
+            <div className="meta-row">
+              <span className="meta-label">Full URL:</span>
+              <span className="meta-value" style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                <input
+                  type="text"
+                  value={effectiveUrl}
+                  disabled
+                  className="readonly-input"
+                  style={{ flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+                  readOnly
+                />
+                <button 
+                  className="action-button secondary" 
+                  onClick={() => effectiveUrl && copyText(effectiveUrl, 'url')}
+                  style={{ flexShrink: 0 }}
+                >
+                  {showUrlCopySuccess ? 'Copied!' : 'Copy'}
+                </button>
+              </span>
+            </div>
+          )}
           <div className="meta-row">
             <span className="meta-label">Added:</span>
             <span className="meta-value">{formatDate(item.created_at)}</span>
@@ -94,11 +228,28 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ item, onEdit, onCopy, onDelet
             <span className="meta-label">Last used:</span>
             <span className="meta-value">{formatTimeAgo(item.last_accessed_at)}</span>
           </div>
+          {/* Kusto query: show cluster/database if we can parse them */}
+          {isKustoQuery && hasUrl && (kustoMeta.cluster || kustoMeta.database) && (
+            <>
+              {kustoMeta.cluster && (
+                <div className="meta-row">
+                  <span className="meta-label">Cluster:</span>
+                  <span className="meta-value">{kustoMeta.cluster}</span>
+                </div>
+              )}
+              {kustoMeta.database && (
+                <div className="meta-row">
+                  <span className="meta-label">Database:</span>
+                  <span className="meta-value">{kustoMeta.database}</span>
+                </div>
+              )}
+            </>
+          )}
         </div>
       </div>
 
       <div className="detail-content">
-        <div className="edit-section">
+        <div className="edit-section" style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
           <button 
             className="action-button secondary" 
             onClick={handleEdit}
@@ -112,21 +263,121 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ item, onEdit, onCopy, onDelet
           >
             Delete
           </button>
+          {/* Contextual actions for links and queries */}
+          {isKustoQuery && (
+            <>
+              {hasUrl && (
+                <>
+                  <button className="action-button" onClick={() => handleOpenExternal(effectiveUrl)} title={'Open in Web'}>
+                    Open in Web
+                  </button>
+                </>
+              )}
+              {hasUrl && (
+                <button className="action-button secondary" onClick={() => effectiveUrl && copyText(effectiveUrl, 'url')}>
+                  {showUrlCopySuccess ? 'URL Copied!' : 'Copy URL'}
+                </button>
+              )}
+            </>
+          )}
+          {isLink && (
+            <>
+              <button className="action-button" onClick={() => handleOpenExternal(effectiveUrl)} title="Open">
+                Open
+              </button>
+            </>
+          )}
+          {isImage && (
+            <>
+              <button className="action-button" onClick={() => handleOpenFile(item.payload)} title="Open Image">
+                Open Image
+              </button>
+              <button className="action-button secondary" onClick={() => copyText(item.payload, 'path')}>
+                {showCopySuccess ? 'Path Copied!' : 'Copy Path'}
+              </button>
+              <button className="action-button secondary" onClick={() => copyImage(item.payload)}>
+                {showCopySuccess ? 'Image Copied!' : 'Copy Image'}
+              </button>
+            </>
+          )}
         </div>
         
         <div className="payload-container">
           <div className="payload-header">
-            <button 
-              className={`copy-icon-button ${showCopySuccess ? 'success' : ''}`}
-              onClick={handleCopy}
-              title={showCopySuccess ? 'Copied!' : 'Copy to clipboard'}
-            >
-              {showCopySuccess ? 'Copied!' : 'Copy'}
-            </button>
+            {/* Context-aware copy button in header for quick access */}
+            {isKustoQuery ? (
+              <button 
+                className={`copy-icon-button ${showCopySuccess ? 'success' : ''}`}
+                onClick={() => parsed.query && copyText(parsed.query, 'query')}
+                title={showCopySuccess ? 'Copied!' : 'Copy query to clipboard'}
+              >
+                {showCopySuccess ? 'Copied!' : 'Copy Query'}
+              </button>
+            ) : isLink ? (
+              // For links, we no longer show copy in the payload header; copy is near the Full URL field
+              <></>
+            ) : isImage ? (
+              <button 
+                className={`copy-icon-button ${showCopySuccess ? 'success' : ''}`}
+                onClick={() => copyImage(item.payload)}
+                title={showCopySuccess ? 'Copied!' : 'Copy image to clipboard'}
+              >
+                {showCopySuccess ? 'Copied!' : 'Copy Image'}
+              </button>
+            ) : (
+              <button 
+                className={`copy-icon-button ${showCopySuccess ? 'success' : ''}`}
+                onClick={handleCopy}
+                title={showCopySuccess ? 'Copied!' : 'Copy to clipboard'}
+              >
+                {showCopySuccess ? 'Copied!' : 'Copy'}
+              </button>
+            )}
           </div>
-          <pre className="payload-text">
-            {searchQuery ? highlightText(item.payload, searchQuery) : item.payload}
-          </pre>
+          {/* Render a clean query box for Kusto queries. For links, omit raw long URL text */}
+          {isKustoQuery ? (
+            <pre className="payload-text">
+              {searchQuery ? highlightText(parsed.query || '', searchQuery) : (parsed.query || '')}
+            </pre>
+          ) : isLink ? (
+            <div className="payload-text" style={{ whiteSpace: 'normal' }}>
+              <span style={{ color: '#666' }}>This item is a link. Use the Open button or copy from the Full URL field above.</span>
+            </div>
+          ) : isImage ? (
+            <div className="image-preview">
+              <img 
+                src={`file://${item.payload}`} 
+                alt={item.description}
+                style={{ 
+                  maxWidth: '100%', 
+                  maxHeight: '400px', 
+                  objectFit: 'contain',
+                  border: '1px solid #ddd',
+                  borderRadius: '4px'
+                }}
+                onError={(e) => {
+                  const img = e.target as HTMLImageElement;
+                  img.style.display = 'none';
+                  
+                  // Check if error message already exists to prevent duplicates
+                  const parent = img.parentNode as HTMLElement;
+                  if (!parent?.querySelector('.image-error-message')) {
+                    const errorDiv = document.createElement('div');
+                    errorDiv.className = 'image-error-message';
+                    errorDiv.innerHTML = `<span style="color: #666;">Image not found: ${item.payload}</span>`;
+                    parent?.appendChild(errorDiv);
+                  }
+                }}
+              />
+              <div style={{ marginTop: '8px', fontSize: '12px', color: '#666' }}>
+                {item.payload}
+              </div>
+            </div>
+          ) : (
+            <pre className="payload-text">
+              {searchQuery ? highlightText(item.payload, searchQuery) : item.payload}
+            </pre>
+          )}
         </div>
       </div>
 

@@ -24,7 +24,7 @@
     "make:linux": "electron-forge make --platform=linux --arch=x64",
     "publish": "electron-forge publish",
     "lint": "echo \"No linting configured\"",
-    "test": "npx jest",
+    "test": "jest",
     "commit": "cz",
     "prepare": "husky install",
     "semantic-release": "semantic-release"
@@ -59,6 +59,7 @@
     "@tensorflow/tfjs-core": "^3.21.0",
     "@types/react": "^19.1.9",
     "@types/react-dom": "^19.1.7",
+    "adm-zip": "^0.5.16",
     "apache-arrow": "^18.0.0",
     "electron-squirrel-startup": "^1.0.1",
     "electron-store": "^8.1.0",

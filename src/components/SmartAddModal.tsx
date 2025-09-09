@@ -3,13 +3,14 @@ import { ItemType } from '../types';
 import { useAutosize } from '../hooks/useAutosize';
 
 interface SmartAddModalProps {
-  onSave: (itemData: { type: ItemType; description: string; payload: string }) => void;
+  onSave: (itemData: { type: ItemType; description: string; payload: string }) => Promise<void>;
   onCancel: () => void;
+  isSaving?: boolean;
 }
 
 type Step = 'payload' | 'type-selection' | 'description';
 
-const SmartAddModal: React.FC<SmartAddModalProps> = ({ onSave, onCancel }) => {
+const SmartAddModal: React.FC<SmartAddModalProps> = ({ onSave, onCancel, isSaving = false }) => {
   const [step, setStep] = useState<Step>('payload');
   const [payload, setPayload] = useState('');
   const [description, setDescription] = useState('');
@@ -19,8 +20,90 @@ const SmartAddModal: React.FC<SmartAddModalProps> = ({ onSave, onCancel }) => {
   const payloadRef = useAutosize<HTMLTextAreaElement>();
   const descriptionRef = useRef<HTMLInputElement>(null);
 
-  const detectContentType = (content: string): ItemType | null => {
+  const handleImageDrop = async (files: FileList) => {
+    const file = files[0];
+    if (file && file.type.startsWith('image/')) {
+      try {
+        const { ipcRenderer } = window.require('electron');
+        // Convert file to buffer for IPC
+        const arrayBuffer = await file.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
+        const savedPath = await ipcRenderer.invoke('save-dropped-image', {
+          buffer,
+          name: file.name,
+          type: file.type
+        });
+        setPayload(savedPath);
+        setDetectedType('image');
+        setStep('description');
+        // Auto-focus description input after a short delay
+        setTimeout(() => {
+          descriptionRef.current?.focus();
+        }, 100);
+      } catch (error) {
+        console.error('Error handling dropped image:', error);
+      }
+    }
+  };
+
+  const handlePaste = async (e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.type.startsWith('image/')) {
+        e.preventDefault();
+        const file = item.getAsFile();
+        if (file) {
+          try {
+            const { ipcRenderer } = window.require('electron');
+            const arrayBuffer = await file.arrayBuffer();
+            const buffer = Buffer.from(arrayBuffer);
+            const savedPath = await ipcRenderer.invoke('save-pasted-image', {
+              buffer,
+              name: `pasted-image-${Date.now()}.png`,
+              type: file.type
+            });
+            setPayload(savedPath);
+            setDetectedType('image');
+            setStep('description');
+            // Auto-focus description input after a short delay
+            setTimeout(() => {
+              descriptionRef.current?.focus();
+            }, 100);
+          } catch (error) {
+            console.error('Error handling pasted image:', error);
+          }
+        }
+        return;
+      }
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+      handleImageDrop(files);
+    }
+  };
+
+  const detectContentType = (content: string): ItemType => {
     const trimmed = content.trim();
+    
+    // Check if it's an image file path
+    const imageExtensions = /\.(jpg|jpeg|png|gif|bmp|webp|svg|heic|heif)$/i;
+    if (imageExtensions.test(trimmed)) {
+      return 'image';
+    }
     
     // URL detection - more comprehensive regex
     const urlRegex = /^https?:\/\/[^\s/$.?#].[^\s]*$/i;
@@ -30,29 +113,25 @@ const SmartAddModal: React.FC<SmartAddModalProps> = ({ onSave, onCancel }) => {
       return 'link';
     }
     
-    // KQL detection - look for common KQL patterns
-    const kqlPatterns = [
-      /\b(let|datatable|union|join|where|project|extend|summarize|order by|take|limit|sort by)\b/i,
-      /\b(ago|now|startofday|endofday|bin)\s*\(/i,
-      /\b(count|sum|avg|min|max|dcount|percentile)\s*\(/i,
-      /\|\s*(where|project|extend|summarize|order|take|limit|sort)/i,
-      /^[a-zA-Z][a-zA-Z0-9_]*\s*\|/,  // Table name followed by pipe
-    ];
-    
-    const hasKqlPattern = kqlPatterns.some(pattern => pattern.test(trimmed));
-    
-    // If it has KQL patterns and is multi-line or has pipes, likely KQL
-    if (hasKqlPattern || trimmed.includes('|')) {
+    // KQL detection - look for strong KQL signals
+    // We try to avoid false positives so generic text becomes a 'prompt'
+    const kqlStrongOps = /(where|project|extend|summarize|order\s+by|take|limit|sort\s+by)/i;
+    const hasKqlPipeWithOp = /\|\s*(where|project|extend|summarize|order\s+by|take|limit|sort\s+by)/i.test(trimmed);
+    const hasKqlFuncs = /(ago|now|startofday|endofday|bin)\s*\(/i.test(trimmed);
+    const hasAggFuncs = /(count|sum|avg|min|max|dcount|percentile)\s*\(/i.test(trimmed);
+    const looksLikeTableThenPipe = /^[a-zA-Z][a-zA-Z0-9_]*\s*\|/.test(trimmed);
+
+    const kqlKeywordHits = [hasKqlPipeWithOp, hasKqlFuncs, hasAggFuncs, looksLikeTableThenPipe]
+      .filter(Boolean).length;
+
+    // Classify as KQL if we have a strong operator after a pipe,
+    // or multiple independent KQL cues
+    if (hasKqlPipeWithOp || kqlKeywordHits >= 2) {
       return 'kusto_query';
     }
-    
-    // If it's a single line without obvious URL markers, could be either
-    if (trimmed.split('\n').length === 1 && trimmed.length < 200) {
-      return null; // Ambiguous, ask user
-    }
-    
-    // Multi-line text without URL patterns is likely KQL
-    return 'kusto_query';
+
+    // Default: treat as a natural-language prompt
+    return 'prompt';
   };
 
   const handlePayloadSubmit = () => {
@@ -61,16 +140,12 @@ const SmartAddModal: React.FC<SmartAddModalProps> = ({ onSave, onCancel }) => {
     const detected = detectContentType(payload);
     setDetectedType(detected);
     
-    if (detected === null) {
-      setShowTypeSelection(true);
-      setStep('type-selection');
-    } else {
-      setStep('description');
-      // Auto-focus description input after a short delay
-      setTimeout(() => {
-        descriptionRef.current?.focus();
-      }, 100);
-    }
+    // Always proceed with detected type (link, kusto_query, or prompt)
+    setStep('description');
+    // Auto-focus description input after a short delay
+    setTimeout(() => {
+      descriptionRef.current?.focus();
+    }, 100);
   };
 
   const handleTypeSelection = (type: ItemType) => {
@@ -82,17 +157,24 @@ const SmartAddModal: React.FC<SmartAddModalProps> = ({ onSave, onCancel }) => {
     }, 100);
   };
 
-  const handleDescriptionSubmit = () => {
-    if (!description.trim() || !detectedType) return;
+  const handleDescriptionSubmit = async () => {
+    if (!description.trim() || !detectedType || isSaving) return;
     
-    onSave({
-      type: detectedType,
-      description: description.trim(),
-      payload: payload.trim()
-    });
+    try {
+      await onSave({
+        type: detectedType,
+        description: description.trim(),
+        payload: payload.trim()
+      });
+    } catch (error) {
+      // Error handling is done in the parent component
+      console.error('Error saving item:', error);
+    }
   };
 
   const handleCancel = () => {
+    if (isSaving) return; // Prevent closing while saving
+    
     const hasContent = payload.trim() || description.trim();
     if (hasContent) {
       const confirmed = window.confirm(
@@ -104,6 +186,8 @@ const SmartAddModal: React.FC<SmartAddModalProps> = ({ onSave, onCancel }) => {
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (isSaving) return; // Prevent keyboard actions while saving
+    
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       if (step === 'payload') {
@@ -118,7 +202,7 @@ const SmartAddModal: React.FC<SmartAddModalProps> = ({ onSave, onCancel }) => {
   };
 
   const handleBackdropClick = (e: React.MouseEvent) => {
-    if (e.target === e.currentTarget) {
+    if (e.target === e.currentTarget && !isSaving) {
       handleCancel();
     }
   };
@@ -133,7 +217,7 @@ const SmartAddModal: React.FC<SmartAddModalProps> = ({ onSave, onCancel }) => {
   const getPlaceholder = () => {
     switch (step) {
       case 'payload':
-        return 'Paste your URL or KQL query here...';
+        return 'Paste your content here. URL, KQL query, or prompt...';
       case 'description':
         return 'Enter a description...';
       default:
@@ -155,7 +239,13 @@ const SmartAddModal: React.FC<SmartAddModalProps> = ({ onSave, onCancel }) => {
   };
 
   return (
-    <div className="modal-backdrop" onClick={handleBackdropClick}>
+    <div 
+      className="modal-backdrop" 
+      onClick={handleBackdropClick}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+      onPaste={handlePaste}
+    >
       <div className="modal-content smart-add-modal" role="dialog" aria-modal="true">
         <div className="smart-add-header">
           <h2 className="modal-title">Add New Item</h2>
@@ -172,12 +262,14 @@ const SmartAddModal: React.FC<SmartAddModalProps> = ({ onSave, onCancel }) => {
               placeholder={getPlaceholder()}
               className="smart-input payload-input"
               rows={3}
+              disabled={isSaving}
             />
             <div className="step-actions">
               <button 
                 type="button" 
                 className="action-button secondary"
                 onClick={onCancel}
+                disabled={isSaving}
               >
                 Cancel
               </button>
@@ -185,7 +277,7 @@ const SmartAddModal: React.FC<SmartAddModalProps> = ({ onSave, onCancel }) => {
                 type="button" 
                 className="action-button primary"
                 onClick={handlePayloadSubmit}
-                disabled={!payload.trim()}
+                disabled={!payload.trim() || isSaving}
               >
                 Next
               </button>
@@ -201,20 +293,40 @@ const SmartAddModal: React.FC<SmartAddModalProps> = ({ onSave, onCancel }) => {
             </div>
             <div className="type-selection">
               <button 
-                className="type-option"
-                onClick={() => handleTypeSelection('link')}
+                className={`type-option ${isSaving ? 'disabled' : ''}`}
+                onClick={() => !isSaving && handleTypeSelection('link')}
+                disabled={isSaving}
               >
                 <div className="type-icon">🔗</div>
                 <div className="type-label">Link/URL</div>
                 <div className="type-description">A web link or URL</div>
               </button>
               <button 
-                className="type-option"
-                onClick={() => handleTypeSelection('kusto_query')}
+                className={`type-option ${isSaving ? 'disabled' : ''}`}
+                onClick={() => !isSaving && handleTypeSelection('kusto_query')}
+                disabled={isSaving}
               >
                 <div className="type-icon">📊</div>
                 <div className="type-label">KQL Query</div>
                 <div className="type-description">Kusto Query Language</div>
+              </button>
+              <button 
+                className={`type-option ${isSaving ? 'disabled' : ''}`}
+                onClick={() => !isSaving && handleTypeSelection('prompt')}
+                disabled={isSaving}
+              >
+                <div className="type-icon">💬</div>
+                <div className="type-label">Prompt</div>
+                <div className="type-description">Natural-language prompt text</div>
+              </button>
+              <button 
+                className={`type-option ${isSaving ? 'disabled' : ''}`}
+                onClick={() => !isSaving && handleTypeSelection('image')}
+                disabled={isSaving}
+              >
+                <div className="type-icon">📷</div>
+                <div className="type-label">Image</div>
+                <div className="type-description">Image file or screenshot</div>
               </button>
             </div>
           </div>
@@ -224,10 +336,27 @@ const SmartAddModal: React.FC<SmartAddModalProps> = ({ onSave, onCancel }) => {
           <div className="smart-add-step">
             <div className="payload-preview">
               <div className="type-badge">
-                {detectedType === 'link' ? '🔗 Link' : '📊 KQL Query'}
+                {detectedType === 'link' ? '🔗 Link' : 
+                 detectedType === 'kusto_query' ? '📊 KQL Query' : 
+                 detectedType === 'image' ? '� Image' : '�💬 Prompt'}
               </div>
-              <div className="preview-text">{payload}</div>
+              {detectedType === 'image' ? (
+                <img 
+                  src={`file://${payload}`} 
+                  alt="Preview"
+                  style={{ 
+                    maxWidth: '200px', 
+                    maxHeight: '150px', 
+                    objectFit: 'contain',
+                    border: '1px solid #ddd',
+                    borderRadius: '4px'
+                  }}
+                />
+              ) : (
+                <div className="preview-text">{payload}</div>
+              )}
             </div>
+            
             <input
               ref={descriptionRef}
               type="text"
@@ -236,22 +365,31 @@ const SmartAddModal: React.FC<SmartAddModalProps> = ({ onSave, onCancel }) => {
               onKeyDown={handleKeyDown}
               placeholder={getPlaceholder()}
               className="smart-input description-input"
+              disabled={isSaving}
             />
             <div className="step-actions">
               <button 
                 type="button" 
                 className="action-button secondary"
                 onClick={() => setStep('payload')}
+                disabled={isSaving}
               >
                 Back
               </button>
               <button 
                 type="button" 
-                className="action-button primary"
+                className={`action-button primary ${isSaving ? 'loading' : ''}`}
                 onClick={handleDescriptionSubmit}
-                disabled={!description.trim()}
+                disabled={!description.trim() || isSaving}
               >
-                Save
+                {isSaving ? (
+                  <>
+                    <span className="loading-spinner"></span>
+                    Saving...
+                  </>
+                ) : (
+                  'Save'
+                )}
               </button>
             </div>
           </div>

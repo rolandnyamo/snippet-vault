@@ -13,7 +13,12 @@ jest.doMock('fs', () => mockFs);
 
 // Mock lancedb 
 const mockDb = { 
-  openTable: jest.fn()
+  openTable: jest.fn(),
+  createTable: jest.fn().mockResolvedValue({
+    delete: jest.fn().mockResolvedValue(),
+    add: jest.fn().mockResolvedValue()
+  }),
+  dropTable: jest.fn().mockResolvedValue()
 };
 
 const mockLancedb = {
@@ -33,7 +38,7 @@ const mockEmbeddingManager = {
   canLoadTensorFlow: jest.fn().mockResolvedValue(false),
 };
 
-jest.doMock('../hybrid-embeddings.js', () => ({
+jest.doMock('../embeddings/index.js', () => ({
   embeddingManager: mockEmbeddingManager,
   EMBEDDING_MODELS: {
     LIGHTWEIGHT: 'lightweight',
@@ -117,7 +122,7 @@ describe('searchItems', () => {
 
     mockFs.readFileSync.mockReturnValue(JSON.stringify({ storage_path: '/test/db' }));
 
-    const { searchItems } = await import('../store.js');
+    const { searchItems } = await import('../store/index.js');
     const res = await searchItems('found', '/test/config.json');
 
     expect(res).toEqual([

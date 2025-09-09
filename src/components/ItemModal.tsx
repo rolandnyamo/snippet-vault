@@ -4,18 +4,31 @@ import { useAutosize } from '../hooks/useAutosize';
 
 interface ItemModalProps {
   item?: Item | null;
-  onSave: (itemData: { type: ItemType; description: string; payload: string }) => void;
+  onSave: (itemData: { type: ItemType; description: string; payload: string }) => Promise<void>;
   onCancel: () => void;
   onDelete?: (itemId: string) => void;
+  isSaving?: boolean;
 }
 
-const ItemModal: React.FC<ItemModalProps> = ({ item, onSave, onCancel, onDelete }) => {
+const ItemModal: React.FC<ItemModalProps> = ({ item, onSave, onCancel, onDelete, isSaving = false }) => {
   const [type, setType] = useState<ItemType>('link');
   const [description, setDescription] = useState('');
   const [payload, setPayload] = useState('');
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
   
   const textareaRef = useAutosize<HTMLTextAreaElement>();
+
+  const handleImageSelect = async () => {
+    try {
+      const { ipcRenderer } = window.require('electron');
+      const result = await ipcRenderer.invoke('select-image-file');
+      if (result && !result.canceled) {
+        setPayload(result.filePath);
+      }
+    } catch (error) {
+      console.error('Error selecting image:', error);
+    }
+  };
 
   useEffect(() => {
     if (item) {
@@ -45,18 +58,23 @@ const ItemModal: React.FC<ItemModalProps> = ({ item, onSave, onCancel, onDelete 
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!validateForm()) {
+    if (!validateForm() || isSaving) {
       return;
     }
 
-    onSave({
-      type,
-      description: description.trim(),
-      payload: payload.trim()
-    });
+    try {
+      await onSave({
+        type,
+        description: description.trim(),
+        payload: payload.trim()
+      });
+    } catch (error) {
+      // Error handling is done in the parent component
+      console.error('Error saving item:', error);
+    }
   };
 
   const handleDelete = () => {
@@ -72,6 +90,8 @@ const ItemModal: React.FC<ItemModalProps> = ({ item, onSave, onCancel, onDelete 
   };
 
   const handleCancel = useCallback(() => {
+    if (isSaving) return; // Prevent closing while saving
+    
     // Check if there are unsaved changes by comparing with original values
     const originalDescription = item?.description || '';
     const originalPayload = item?.payload || '';
@@ -91,7 +111,7 @@ const ItemModal: React.FC<ItemModalProps> = ({ item, onSave, onCancel, onDelete 
     }
     
     onCancel();
-  }, [description, payload, item, onCancel]);
+  }, [description, payload, item, onCancel, isSaving]);
 
   // Handle ESC key globally when modal is open
   useEffect(() => {
@@ -140,6 +160,7 @@ const ItemModal: React.FC<ItemModalProps> = ({ item, onSave, onCancel, onDelete 
                   value="link"
                   checked={type === 'link'}
                   onChange={(e) => setType(e.target.value as ItemType)}
+                  disabled={isSaving}
                 />
                 Link
               </label>
@@ -150,8 +171,31 @@ const ItemModal: React.FC<ItemModalProps> = ({ item, onSave, onCancel, onDelete 
                   value="kusto_query"
                   checked={type === 'kusto_query'}
                   onChange={(e) => setType(e.target.value as ItemType)}
+                  disabled={isSaving}
                 />
                 Kusto Query
+              </label>
+              <label className="radio-label">
+                <input
+                  type="radio"
+                  name="type"
+                  value="prompt"
+                  checked={type === 'prompt'}
+                  onChange={(e) => setType(e.target.value as ItemType)}
+                  disabled={isSaving}
+                />
+                Prompt
+              </label>
+              <label className="radio-label">
+                <input
+                  type="radio"
+                  name="type"
+                  value="image"
+                  checked={type === 'image'}
+                  onChange={(e) => setType(e.target.value as ItemType)}
+                  disabled={isSaving}
+                />
+                Image
               </label>
             </div>
           </div>
@@ -167,6 +211,7 @@ const ItemModal: React.FC<ItemModalProps> = ({ item, onSave, onCancel, onDelete 
               onChange={(e) => setDescription(e.target.value)}
               className={`form-input ${errors.description ? 'error' : ''}`}
               placeholder="Enter a description..."
+              disabled={isSaving}
             />
             {errors.description && (
               <span className="error-message">{errors.description}</span>
@@ -175,17 +220,51 @@ const ItemModal: React.FC<ItemModalProps> = ({ item, onSave, onCancel, onDelete 
 
           <div className="form-group">
             <label htmlFor="payload" className="form-label">
-              Payload ({type === 'link' ? 'URL' : 'KQL'})
+              {type === 'link' ? 'Payload (URL)' : type === 'kusto_query' ? 'Payload (KQL)' : type === 'image' ? 'Image File' : 'Payload (Prompt)'}
             </label>
-            <textarea
-              id="payload"
-              ref={textareaRef}
-              value={payload}
-              onChange={(e) => setPayload(e.target.value)}
-              className={`form-textarea ${errors.payload ? 'error' : ''}`}
-              placeholder={type === 'link' ? 'https://...' : 'Enter your KQL query...'}
-              rows={3}
-            />
+            {type === 'image' ? (
+              <div>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '8px' }}>
+                  <button 
+                    type="button" 
+                    className="action-button secondary"
+                    onClick={handleImageSelect}
+                    disabled={isSaving}
+                  >
+                    Select Image
+                  </button>
+                  {payload && (
+                    <span style={{ fontSize: '12px', color: '#666' }}>
+                      {payload.split('/').pop()}
+                    </span>
+                  )}
+                </div>
+                {payload && (
+                  <img 
+                    src={`file://${payload}`} 
+                    alt="Preview"
+                    style={{ 
+                      maxWidth: '200px', 
+                      maxHeight: '200px', 
+                      objectFit: 'contain',
+                      border: '1px solid #ddd',
+                      borderRadius: '4px'
+                    }}
+                  />
+                )}
+              </div>
+            ) : (
+              <textarea
+                id="payload"
+                ref={textareaRef}
+                value={payload}
+                onChange={(e) => setPayload(e.target.value)}
+                className={`form-textarea ${errors.payload ? 'error' : ''}`}
+                placeholder={type === 'link' ? 'https://...' : type === 'kusto_query' ? 'Enter your KQL query...' : 'Enter your prompt...'}
+                rows={3}
+                disabled={isSaving}
+              />
+            )}
             {errors.payload && (
               <span className="error-message">{errors.payload}</span>
             )}
@@ -211,14 +290,23 @@ const ItemModal: React.FC<ItemModalProps> = ({ item, onSave, onCancel, onDelete 
                 type="button" 
                 className="action-button secondary"
                 onClick={handleCancel}
+                disabled={isSaving}
               >
                 Cancel
               </button>
               <button 
                 type="submit" 
-                className="action-button primary"
+                className={`action-button primary ${isSaving ? 'loading' : ''}`}
+                disabled={isSaving}
               >
-                Save
+                {isSaving ? (
+                  <>
+                    <span className="loading-spinner"></span>
+                    Saving...
+                  </>
+                ) : (
+                  'Save'
+                )}
               </button>
             </div>
           </div>

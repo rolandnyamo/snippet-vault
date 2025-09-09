@@ -13,7 +13,12 @@ jest.doMock('fs', () => mockFs);
 // Mock lancedb - note: this is a default export mock
 const mockDb = { 
   tableNames: jest.fn().mockResolvedValue(['items_raw', 'items_embeddings']),
-  openTable: jest.fn()
+  openTable: jest.fn(),
+  createTable: jest.fn().mockResolvedValue({
+    delete: jest.fn().mockResolvedValue(),
+    add: jest.fn().mockResolvedValue()
+  }),
+  dropTable: jest.fn().mockResolvedValue()
 };
 
 const mockLancedb = {
@@ -33,7 +38,7 @@ const mockEmbeddingManager = {
   canLoadTensorFlow: jest.fn().mockResolvedValue(false),
 };
 
-jest.doMock('../hybrid-embeddings.js', () => ({
+jest.doMock('../embeddings/index.js', () => ({
   embeddingManager: mockEmbeddingManager,
   EMBEDDING_MODELS: {
     LIGHTWEIGHT: 'lightweight',
@@ -94,7 +99,7 @@ describe('getRecentItems', () => {
 
     mockFs.readFileSync.mockReturnValue(JSON.stringify({ storage_path: '/test/db' }));
 
-    const { getRecentItems } = await import('../store.js');
+    const { getRecentItems } = await import('../store/index.js');
     const results = await getRecentItems('/test/config.json');
 
     expect(results).toHaveLength(2);

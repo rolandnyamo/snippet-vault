@@ -24,6 +24,8 @@ const ItemRow: React.FC<ItemRowProps> = ({
     switch (type) {
       case 'kusto_query': return 'KQL';
       case 'link': return 'URL';
+      case 'prompt': return 'PRM';
+      case 'image': return 'IMG';
       default: return type.toUpperCase();
     }
   };
@@ -86,7 +88,24 @@ const ItemRow: React.FC<ItemRowProps> = ({
           <span className="item-arrow">▸</span>
         </div>
         <div className="item-payload">
-          {searchQuery ? highlightText(truncatePayload(item.payload), searchQuery) : truncatePayload(item.payload)}
+          {item.type === 'image' ? (
+            <div className="image-thumbnail-container">
+              <img 
+                src={`file://${item.payload}`} 
+                alt={item.description}
+                className="image-thumbnail"
+                onError={(e) => {
+                  // If image fails to load, show the file path instead
+                  const container = (e.target as HTMLImageElement).parentElement;
+                  if (container) {
+                    container.innerHTML = `<span class="image-path-fallback">${truncatePayload(item.payload)}</span>`;
+                  }
+                }}
+              />
+            </div>
+          ) : (
+            searchQuery ? highlightText(truncatePayload(item.payload), searchQuery) : truncatePayload(item.payload)
+          )}
         </div>
         {searchQuery && (
           <div className="item-score">
