@@ -14,9 +14,12 @@ jest.doMock('fs', () => mockFs);
 // Mock lancedb - note: this is a default export mock
 const mockDb = { 
   tableNames: jest.fn().mockResolvedValue([]),
+  openTable: jest.fn(),
   createTable: jest.fn().mockResolvedValue({
-    delete: jest.fn()
+    delete: jest.fn().mockResolvedValue(),
+    add: jest.fn().mockResolvedValue()
   }),
+  dropTable: jest.fn().mockResolvedValue()
 };
 
 const mockLancedb = {

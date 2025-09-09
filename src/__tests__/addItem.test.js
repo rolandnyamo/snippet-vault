@@ -13,7 +13,12 @@ jest.doMock('fs', () => mockFs);
 
 // Mock lancedb 
 const mockDb = { 
-  openTable: jest.fn()
+  openTable: jest.fn(),
+  createTable: jest.fn().mockResolvedValue({
+    delete: jest.fn().mockResolvedValue(),
+    add: jest.fn().mockResolvedValue()
+  }),
+  dropTable: jest.fn().mockResolvedValue()
 };
 
 const mockLancedb = {
@@ -164,7 +169,9 @@ describe('addItem', () => {
       }),
     ]);
 
-    // For images, embedding should be generated from description only
-    expect(mockEmbeddingManager.generateEmbedding).toHaveBeenCalledWith('A screenshot of the dashboard', expect.anything(), expect.anything());
+    // For images, embedding should be generated from description only (check the last call which is the actual addItem call)
+    const calls = mockEmbeddingManager.generateEmbedding.mock.calls;
+    const lastCall = calls[calls.length - 1];
+    expect(lastCall[0]).toBe('A screenshot of the dashboard');
   });
 });

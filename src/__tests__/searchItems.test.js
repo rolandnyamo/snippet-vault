@@ -13,7 +13,12 @@ jest.doMock('fs', () => mockFs);
 
 // Mock lancedb 
 const mockDb = { 
-  openTable: jest.fn()
+  openTable: jest.fn(),
+  createTable: jest.fn().mockResolvedValue({
+    delete: jest.fn().mockResolvedValue(),
+    add: jest.fn().mockResolvedValue()
+  }),
+  dropTable: jest.fn().mockResolvedValue()
 };
 
 const mockLancedb = {
