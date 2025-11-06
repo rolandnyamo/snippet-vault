@@ -8,6 +8,7 @@ export interface Item {
   created_at: string;
   last_accessed_at: string;
   embedding_model: string;
+  image_path?: string;
 }
 
 export interface Config {

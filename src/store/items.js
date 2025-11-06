@@ -31,6 +31,7 @@ export async function addItem(item, configPath) {
       type: item.type,
       payload: item.payload,
       description: item.description,
+      image_path: item.image_path,
       created_at: now,
       last_accessed_at: now,
     }]);
@@ -82,17 +83,17 @@ export async function updateItem(itemId, updates, configPath) {
     // Add updated item
     await rawTable.add([updatedItem]);
     
-    // If payload or description changed, regenerate embedding
-    if (updates.payload !== undefined || updates.description !== undefined) {
+    // If payload, description, or image path changed, regenerate embedding
+    if (updates.payload !== undefined || updates.description !== undefined || updates.image_path !== undefined) {
       // For images, generate embedding only from description
       // For other types, use payload + description as before
-      const newText = updatedItem.type === 'image' 
-        ? updatedItem.description 
+      const newText = updatedItem.type === 'image'
+        ? updatedItem.description
         : updatedItem.payload + ' ' + updatedItem.description;
-        
+
       await ensureEmbeddingTableCompatible(db, configPath);
       const newEmbedding = await generateEmbedding(newText, db, configPath);
-      
+
       // Update embedding
       const embeddingTable = await db.openTable('items_embeddings');
       await embeddingTable.delete(`id = "${itemId}"`);
@@ -434,17 +435,22 @@ export async function exportData(configPath) {
     
     for (const item of sortedItems) {
       const exportItem = { ...item };
-      
-      if (item.type === 'image' && item.payload) {
-        // Convert absolute path to relative path and collect image file
-        const fileName = path.basename(item.payload);
-        const relativePath = `images/${fileName}`;
-        exportItem.payload = relativePath;
-        
-        // Add image file to the list to be included in zip
-        if (fs.existsSync(item.payload)) {
+
+      // Handle image paths for both 'image' type and attached images
+      if ((item.type === 'image' && item.payload) || item.image_path) {
+        const imagePath = item.image_path || item.payload;
+        if (fs.existsSync(imagePath)) {
+          const fileName = path.basename(imagePath);
+          const relativePath = `images/${fileName}`;
+
+          if (item.image_path) {
+            exportItem.image_path = relativePath;
+          } else {
+            exportItem.payload = relativePath;
+          }
+
           imageFiles.add({
-            originalPath: item.payload,
+            originalPath: imagePath,
             zipPath: relativePath
           });
         }
@@ -523,7 +529,10 @@ export async function importData(configPath, importData, zipData, progressCallba
             
             // Update items that reference this image to use the new absolute path
             items.forEach(item => {
-              if (item.type === 'image' && item.payload === imageEntry.entryName) {
+              // Handle both 'image' type payload and the new 'image_path'
+              if (item.image_path === imageEntry.entryName) {
+                item.image_path = targetPath;
+              } else if (item.type === 'image' && item.payload === imageEntry.entryName) {
                 item.payload = targetPath;
               }
             });
@@ -743,6 +752,7 @@ export async function deleteAllData(configPath) {
       type: 'text',
       payload: 'sample payload',
       description: 'sample description',
+      image_path: 'sample/path.jpg',
       created_at: new Date().toISOString(),
       last_accessed_at: new Date().toISOString(),
     }];
