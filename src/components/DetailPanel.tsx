@@ -301,6 +301,24 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ item, onEdit, onCopy, onDelet
             </>
           )}
         </div>
+
+        {item.image_path && (
+          <div className="attached-image-container">
+            <h4>Attached Image</h4>
+            <img
+              src={`file://${item.image_path}`}
+              alt="Attached"
+              style={{
+                maxWidth: '100%',
+                maxHeight: '300px',
+                objectFit: 'contain',
+                border: '1px solid #ddd',
+                borderRadius: '4px',
+                marginTop: '8px'
+              }}
+            />
+          </div>
+        )}
         
         <div className="payload-container">
           <div className="payload-header">

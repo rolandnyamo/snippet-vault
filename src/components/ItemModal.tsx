@@ -4,7 +4,7 @@ import { useAutosize } from '../hooks/useAutosize';
 
 interface ItemModalProps {
   item?: Item | null;
-  onSave: (itemData: { type: ItemType; description: string; payload: string }) => Promise<void>;
+  onSave: (itemData: { type: ItemType; description: string; payload: string; image_path?: string }) => Promise<void>;
   onCancel: () => void;
   onDelete?: (itemId: string) => void;
   isSaving?: boolean;
@@ -14,31 +14,23 @@ const ItemModal: React.FC<ItemModalProps> = ({ item, onSave, onCancel, onDelete,
   const [type, setType] = useState<ItemType>('link');
   const [description, setDescription] = useState('');
   const [payload, setPayload] = useState('');
+  const [imagePath, setImagePath] = useState<string | undefined>();
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
   
   const textareaRef = useAutosize<HTMLTextAreaElement>();
 
-  const handleImageSelect = async () => {
-    try {
-      const { ipcRenderer } = window.require('electron');
-      const result = await ipcRenderer.invoke('select-image-file');
-      if (result && !result.canceled) {
-        setPayload(result.filePath);
-      }
-    } catch (error) {
-      console.error('Error selecting image:', error);
-    }
-  };
 
   useEffect(() => {
     if (item) {
       setType(item.type);
       setDescription(item.description);
       setPayload(item.payload);
+      setImagePath(item.image_path);
     } else {
       setType('link');
       setDescription('');
       setPayload('');
+      setImagePath(undefined);
     }
     setErrors({});
   }, [item]);
@@ -69,7 +61,8 @@ const ItemModal: React.FC<ItemModalProps> = ({ item, onSave, onCancel, onDelete,
       await onSave({
         type,
         description: description.trim(),
-        payload: payload.trim()
+        payload: payload.trim(),
+        image_path: imagePath
       });
     } catch (error) {
       // Error handling is done in the parent component
@@ -225,10 +218,16 @@ const ItemModal: React.FC<ItemModalProps> = ({ item, onSave, onCancel, onDelete,
             {type === 'image' ? (
               <div>
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '8px' }}>
-                  <button 
-                    type="button" 
+                  <button
+                    type="button"
                     className="action-button secondary"
-                    onClick={handleImageSelect}
+                    onClick={async () => {
+                      const { ipcRenderer } = window.require('electron');
+                      const result = await ipcRenderer.invoke('select-image-file');
+                      if (result && !result.canceled) {
+                        setPayload(result.filePath);
+                      }
+                    }}
                     disabled={isSaving}
                   >
                     Select Image
@@ -240,12 +239,12 @@ const ItemModal: React.FC<ItemModalProps> = ({ item, onSave, onCancel, onDelete,
                   )}
                 </div>
                 {payload && (
-                  <img 
-                    src={`file://${payload}`} 
+                  <img
+                    src={`file://${payload}`}
                     alt="Preview"
-                    style={{ 
-                      maxWidth: '200px', 
-                      maxHeight: '200px', 
+                    style={{
+                      maxWidth: '200px',
+                      maxHeight: '200px',
                       objectFit: 'contain',
                       border: '1px solid #ddd',
                       borderRadius: '4px'
@@ -273,11 +272,57 @@ const ItemModal: React.FC<ItemModalProps> = ({ item, onSave, onCancel, onDelete,
             )}
           </div>
 
+          <div className="form-group">
+            <label className="form-label">Attached Image</label>
+            <div className="image-attachment-controls">
+              <button
+                type="button"
+                className="action-button secondary"
+                onClick={async () => {
+                  const { ipcRenderer } = window.require('electron');
+                  const result = await ipcRenderer.invoke('select-image-file');
+                  if (result && !result.canceled) {
+                    setImagePath(result.filePath);
+                  }
+                }}
+                disabled={isSaving}
+              >
+                Select Image
+              </button>
+              {imagePath && (
+                <button
+                  type="button"
+                  className="action-button danger"
+                  onClick={() => setImagePath(undefined)}
+                  disabled={isSaving}
+                >
+                  Remove
+                </button>
+              )}
+            </div>
+            {imagePath && (
+              <div className="image-preview">
+                <img
+                  src={`file://${imagePath}`}
+                  alt="Preview"
+                  style={{
+                    maxWidth: '200px',
+                    maxHeight: '200px',
+                    objectFit: 'contain',
+                    border: '1px solid #ddd',
+                    borderRadius: '4px',
+                    marginTop: '8px'
+                  }}
+                />
+              </div>
+            )}
+          </div>
+
           <div className="form-actions">
             <div className="left-actions">
               {item && onDelete && (
-                <button 
-                  type="button" 
+                <button
+                  type="button"
                   className="action-button danger"
                   onClick={handleDelete}
                 >

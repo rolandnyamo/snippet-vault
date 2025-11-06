@@ -70,7 +70,7 @@
   "devDependencies": {
     "@babel/core": "^7.28.0",
     "@babel/plugin-syntax-import-meta": "^7.10.4",
-    "@babel/preset-env": "^7.28.0",
+    "@babel/preset-env": "^7.28.5",
     "@commitlint/cli": "^18.4.3",
     "@commitlint/config-conventional": "^18.4.3",
     "@electron-forge/cli": "^7.8.3",

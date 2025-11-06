@@ -75,6 +75,11 @@ const ItemRow: React.FC<ItemRowProps> = ({
           <span className="item-description">
             {searchQuery ? highlightText(item.description, searchQuery) : item.description}
           </span>
+          {item.image_path && (
+            <span className="attachment-indicator" title="Image attached">
+              📎
+            </span>
+          )}
           <span className="item-time">{timeAgo}</span>
           {onDelete && (
             <button 
